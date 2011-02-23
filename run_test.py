@@ -3,6 +3,9 @@
 ### Copyright 2007 Steven J. Murdoch
 ### See LICENSE for licensing information
 
+### XXX This script is broken, but we might want to reuse parts of it for
+### implementing Trac ticket #2565 (Redesign Python parts in Torperf)
+
 import os
 import time
 

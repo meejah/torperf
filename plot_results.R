@@ -1,6 +1,10 @@
 ### Copyright 2007 Steven J. Murdoch
 ### See LICENSE for licensing information
 
+### XXX This script is broken, but we should look at it some more and
+### maybe reuse parts of it when implementing Trac ticket #2563 (Add R
+### code for processing Torperf data to the Torperf repository)
+
 UFACTOR = 1e6
 
 ## Subtract to timevals, maintaining precision
