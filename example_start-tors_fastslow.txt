@@ -8,14 +8,14 @@ mkdir -p regular50kb regular1mb regular5mb
 BASEPORT=9000
 SIZENUM=0
 for SIZE in 50kb 1mb 5mb; do
-SPEEDNUM=0
-let SIZENUM=10+$SIZENUM
-for SPEED in slow slowratio regular fast fastratio; do
-let SPEEDNUM=1+$SPEEDNUM
-let PORT=$BASEPORT+$SIZENUM+$SPEEDNUM
-let CONTROLPORT=1000+$PORT
-cd ~/torperf/$SPEED$SIZE
-cat <<EOF >torrc
+  SPEEDNUM=0
+  let SIZENUM=10+$SIZENUM
+  for SPEED in slow slowratio regular fast fastratio; do
+    let SPEEDNUM=1+$SPEEDNUM
+    let PORT=$BASEPORT+$SIZENUM+$SPEEDNUM
+    let CONTROLPORT=1000+$PORT
+    cd ~/torperf/$SPEED$SIZE
+    cat <<EOF >torrc
 DataDirectory .
 SocksPort $PORT
 MaxCircuitDirtiness 1 minute
@@ -24,7 +24,7 @@ Log notice file log
 ControlPort $CONTROLPORT
 CookieAuthentication 1
 EOF
-done
+  done
 done
 
 cd ~/torperf/slow50kb && tor -f ~/torperf/slow50kb/torrc
