@@ -163,26 +163,33 @@ startsec startusec
   writebytes readbytes
 
 The 50kb.extradata, 1mb.extradata, and 5mb.extradata files should
-accumulate lines like this (linebreaks for formatting reasons):
+accumulate lines with KEY=value pairs describing the following properties:
 
-ok 1284059486 $ED16C4DD8E9BCACDE829E6B6571B58095383897A=PPrivCom030
-  $80818E35A46DEED6889818ADC596404AB94E392A=Pandora14
-  $4C23C8C30C66C87E1C875A949B4841E4305FFC57~Amunet11
+CIRC_ID: The circuit id from the control port
+LAUNCH: The launch time
+PATH: The identity fingerprints of the members of the path
+BUILDTIMES: Cumulative timer of how long before each hop was completed
+USED_AT: Closing time for the Torperf stream
+USED_BY: Control port stream id for this Torperf stream
+TIMEOUT: The current CircuitBuildTimeout (in ms, pre-rounding)
+QUANTILE: The current CircuitBuildTimeout quantile cutoff
 
-with column headers:
+In the event of error, the following fields may be present in lieu of
+completion data:
 
-ok|error timestamp firsthop secondhop thirdhop [fourthhop ...]
+FAIL_REASONS: Reasons for circuit failure
+STREAM_FAIL_REASONS: Reasons for stream failure
 
-The first column indicates if this circuit was actually used to fetch
-the data or if Tor chose a different circuit because this one was
-problematic. For every error entry there should be a following ok
-entry, unless the network of the torperf instance is totally dead or
-the resource it wants to fetch is unavailable.
+The files will also contain direct copies of the control port event
+BUILDTIMEOUT_SET. See control-spec.txt for details of this.
 
-The timestamp will NOT necessarily match the timestamps in the .data file
-exactly, because additional processing is necessary. You should allow
-for up to a minute of slack when matching the two files up. See the
-consolidate_stats.py script that fulfills this job.
+The USED_AT timestamp will NOT necessarily match the timestamps in the .data
+file exactly, because additional processing is necessary. The timestamp from
+the .data files that is closest to USED_AT is "datacompletesec
+datacompleteusec". If the times are more than a second apart, something is
+really wrong.
+
+XXX: consolidate-stats needs update, and no longer works.
 
 Call it like this:
 
