@@ -127,6 +127,9 @@ class WriteStats(TorCtl.PostEventListener):
       # try to reuse this circuit later... But we should
       # print out a warn above if that happens.
       del self.all_circs[event.circ_id]
+      # Some STREAM FAILED events are paired with a CLOSED, some are not :(
+      if event.status == "FAILED":
+        self.ignore_streams[event.strm_id] = True
     if event.status == 'CLOSED':
       assert not circ.strm_id or circ.stream_failed
       circ.used = True
