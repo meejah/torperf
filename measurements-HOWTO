@@ -166,10 +166,10 @@ The 50kb.extradata, 1mb.extradata, and 5mb.extradata files should
 accumulate lines with KEY=value pairs describing the following properties:
 
 CIRC_ID: The circuit id from the control port
-LAUNCH: The launch time
+LAUNCH: The launch time of the circuit
 PATH: The identity fingerprints of the members of the path
 BUILDTIMES: Cumulative timer of how long before each hop was completed
-USED_AT: Closing time for the Torperf stream
+USED_AT: Closing time for the Torperf stream (should match datacomplete*sec)
 USED_BY: Control port stream id for this Torperf stream
 TIMEOUT: The current CircuitBuildTimeout (in ms, pre-rounding)
 QUANTILE: The current CircuitBuildTimeout quantile cutoff
