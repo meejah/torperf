@@ -119,8 +119,12 @@ Install the timeout tool:
 $ sudo apt-get install timeout     # Lenny
 $ sudo apt-get install coreutils   # Squeeze
 
-Add crontab entries to start the regular requests (line breaks are only
-for formatting purposes here):
+Add crontab entries to start the regular requests.
+
+Note that the syntax of the timeout script in Lenny is different from the
+one in Squeeze.  When in doubt, look up the correct syntax in the man
+page.  For the timeout script contained in Lenny, the crontab entries
+would be as follows (line breaks are only for formatting purposes here):
 
 $ crontab -e
 
@@ -131,6 +135,22 @@ $ crontab -e
   torperf.torproject.org 127.0.0.1:9021 /.1mbfile >> ~/torperf/1mb.data
   2>/dev/null
 8 * * * * timeout -2 3595 ~/torperf/trivsocks-client
+  torperf.torproject.org 127.0.0.1:9022 /.5mbfile >> ~/torperf/5mb.data
+  2>/dev/null
+
+For the timeout script in Squeeze, use the following crontab entries (the
+only difference is that the first command-line argument is "-s2" instead
+of "-2"; again, line breaks for formatting purposes only):
+
+$ crontab -e
+
+*/5 * * * * timeout -s2 295 ~/torperf/trivsocks-client
+  torperf.torproject.org 127.0.0.1:9020 /.50kbfile >> ~/torperf/50kb.data
+  2>/dev/null
+2,32 * * * * timeout -s2 1795 ~/torperf/trivsocks-client
+  torperf.torproject.org 127.0.0.1:9021 /.1mbfile >> ~/torperf/1mb.data
+  2>/dev/null
+8 * * * * timeout -s2 3595 ~/torperf/trivsocks-client
   torperf.torproject.org 127.0.0.1:9022 /.5mbfile >> ~/torperf/5mb.data
   2>/dev/null
 
