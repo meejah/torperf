@@ -1,0 +1,109 @@
+HOWTO -- How to generate nifty graphs of tor performance
+
+Welcome traveler!  You have reached the howto for some tor performance
+and metrics stuff.  You will find here some techniques and scripts
+developed during several tasks including:
+#1919; in which we examine torperfs with fixed entry guards
+#2543; in which we create graphs of #1919 data
+#2563; in which we generalize techniques from #2543 for the future
+
+The remainder of this HOWTO will walk you through what you need to do
+to use the generalized techniques to generate graphs from performance
+data.  We will use #2543 as an example, because it is from this
+example that the generalized technique was derived.  This is intended
+to be a living document.  If something is unclear, or if you wish to
+request a feature, please open a ticket:
+https://trac.torproject.org/projects/tor/newticket
+
+As far as I know, this document was written by Karsten, Mike Perry,
+and Tom Benjamin.  If you are also an author of this document, please
+add yourself to this list.
+
+Step 1: Download Torperf request files
+--------------------------------------
+
+The 15 Torperf request files are available here:
+
+  https://metrics.torproject.org/data.html#performance
+
+The wget commands to download all of them are:
+
+  wget https://metrics.torproject.org/data/torperf-50kb.data
+  wget https://metrics.torproject.org/data/torperf-1mb.data
+  wget https://metrics.torproject.org/data/torperf-5mb.data
+  wget https://metrics.torproject.org/data/torperffastratio-50kb.data
+  wget https://metrics.torproject.org/data/torperffastratio-1mb.data
+  wget https://metrics.torproject.org/data/torperffastratio-5mb.data
+  wget https://metrics.torproject.org/data/torperffast-50kb.data
+  wget https://metrics.torproject.org/data/torperffast-1mb.data
+  wget https://metrics.torproject.org/data/torperffast-5mb.data
+  wget https://metrics.torproject.org/data/torperfslow-50kb.data
+  wget https://metrics.torproject.org/data/torperfslow-1mb.data
+  wget https://metrics.torproject.org/data/torperfslow-5mb.data
+  wget https://metrics.torproject.org/data/torperfslowratio-50kb.data
+  wget https://metrics.torproject.org/data/torperfslowratio-1mb.data
+  wget https://metrics.torproject.org/data/torperfslowratio-5mb.data
+
+Note that the torperf-*.data files are quite big already (25M+).
+
+
+Step 2: Install R and ggplot2
+-----------------------------
+
+Install R 2.8 or higher.
+
+Run R as user and install ggplot2, quit R, start R again and try to load
+ggplot2:
+
+  $ R
+  > install.packages("ggplot2")
+  > q()     # No need to save the workspace image, ever.
+  $ R
+  > library(ggplot2)
+  > q()
+
+
+Step 3: Filter the data
+-----------------------
+
+Before actually graphing the Torperf data, we should filter it to avoid
+reading 29M of data for each graph.  filter.R is a script that
+accomplishes this task, writing it's output to filtered.csv
+It is used as follows:
+
+1) Decide which files you are interested in.  If you only want graphs
+based on the fast guard nodes, you only need to crunch those files.
+
+2) Decide what date range you are interested in.  The default is to
+include all data since 2001-02-01 until 2099-12-31, by which time I
+expect this script may be obsolete.
+
+usage: R --slave -f filter.R --args [-start=DATE] [-end=DATE] FILENAME(S)
+
+filename must be of the form guardname-basesizeSUFFIX.data
+where SUFFIX is one of kb, mb, gb, tb
+ eg: R --slave -f filter.R --args -start=2011-02-01 -end=2099-12-31 *.data
+ eg: R --slave -f filter.R --args torperf-50kb.data
+
+So, to filter all data from #1919 you would execute:
+  $ R --slave -f filter.R --args *.data
+
+The script may take some time to run if the data files are large.
+
+
+Step 4: Visualize the data
+--------------------------
+
+Let's start with plotting a matrix of completion times graphs for every
+file size and guard selection.
+
+  $ R --slave -f timematrix.R
+
+This execution may take around 15 seconds.
+
+
+Step 5: Find a more useful visualization of the data
+----------------------------------------------------
+
+... TODO ...
+
