@@ -121,7 +121,7 @@ class WriteStats(TorCtl.PostEventListener):
       if event.reason:
         circ.stream_fail_reason = event.reason
         if event.remote_reason:
-          circ.stream_fail_reason += " "+event.remote_reason
+          circ.stream_fail_reason += ":"+event.remote_reason
       self.write_circ(circ)
       # We have no explicit assurance here that tor will not
       # try to reuse this circuit later... But we should
