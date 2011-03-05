@@ -211,14 +211,10 @@ the .data files that is closest to USED_AT is "datacompletesec
 datacompleteusec". If the times are more than a second apart, something is
 really wrong.
 
-XXX: consolidate-stats needs update, and no longer works.
+You may want to consolidate a .data file and an .extradata file together
+by calling the consolidate-stats script like this:
 
-Call it like this:
-
-$ ~/torperf/consolidate-stats DATAFILE EXTRADATAFILE OUTFILE SLACK
-
-Relays are written as $fingerprint=nickname for Named relays and as
-$fingerprint~nickname for relays without the Named flag.
+$ ~/torperf/consolidate-stats DATAFILE EXTRADATAFILE OUTFILE
 
 If everything works, you might want to let your system start these Tor
 clients on system startup. On Debian, this can be done using a crontab

@@ -1,29 +1,49 @@
-###
-#   Call this with 4 parameters: the file to read data from, the file to read
-#   extradata from, the file to write the combined data to, the slack interval
-#   to match data and extradata timestamps.
+#!/usr/bin/python
 #
-#   IMPORTANT: You need to manually sort -g the data file, because torperf
-#   might screw up ordering and this script expects sorted lines!
+# This script consolidates a .data file and an .extradata file together,
+# matching the lines based on the completion time.
+#
+# The resulting output will be the union of both files. It will match lines
+# where possible, and include unmatched lines from both files as well.
+#
+# Usage:
+#   ./consolidate-stats.py <.data file> <.extradata file> <.mergedata file>
 ###
 
-import sys, time
+import sys
 
 class Data:
   def __init__(self, filename, mode="r"):
     self._filename = filename
     self._file = open(filename, mode)
+    self._curData = None
+    self._retCurrent = False
 
   def prepline(self):
+    if self._retCurrent:
+      self._retCurrent = False
+      return self._curData
     line = self._file.readline()
     if line == "" or line == "\n":
       raise StopIteration
-    if line[-1] == "\n":
-      line = line[:-1]
-    return line.split(" ")
+    line = line.strip()
+    self._curData = line.split(" ")
+    return self._curData
+
+  def keepCurrent(self):
+    self._retCurrent = True
+
+class TorperfData(Data):
+  def __init__(self, filename):
+    Data.__init__(self, filename)
+    self.fields = "STARTSEC STARTUSEC SOCKETSEC SOCKETUSEC CONNECTSEC CONNECTUSEC NEGOTIATESEC NEGOTIATEUSEC REQUESTSEC REQUESTUSEC RESPONSESEC RESPONSEUSEC DATAREQUESTSEC DATAREQUESTUSEC DATARESPONSESEC DATARESPONSEUSEC DATACOMPLETESEC DATACOMPLETEUSEC WRITEBYTES READBYTES DIDTIMEOUT".split(" ")
 
   def next(self):
-    return self.prepline()
+    ret = {}
+    values = self.prepline()
+    for i in xrange(len(values)):
+      ret[self.fields[i]] = values[i]
+    return ret
 
   def __iter__(self):
     return self
@@ -31,58 +51,94 @@ class Data:
 class ExtraData(Data):
   def __init__(self, filename):
     Data.__init__(self, filename)
-    self._curData = None
-    self._retCurrent = False
 
   def next(self):
-    if self._retCurrent == True:
-      self._retCurrent = False
-      return self._curData
     cont = self.prepline()
-    if cont[0] == "ok":
-      self._curData = cont[1:]
-      return self._curData
-    print('Ignoring line "' + " ".join(cont) + '"')
-    return self.next()
 
-  def keepCurrent(self):
-    self._retCurrent = True
+    ret = {}
+    for i in cont:
+      if not "=" in i:
+        ret[i] = ""
+        continue
+      pair = i.split("=")
+      ret[pair[0]] = pair[1]
 
-class NormalData(Data):
-  def __init__(self, filename):
-    Data.__init__(self, filename)
+    if not "CIRC_ID" in ret:
+      #print('Ignoring line "' + " ".join(cont) + '"')
+      return self.next()
+    return ret
 
-class BetterData(Data):
+  def __iter__(self):
+    return self
+
+class MergeData(Data):
   def __init__(self, filename):
     Data.__init__(self, filename, "w")
 
-  def writeLine(self, line):
+  def writeLine(self, data):
+    line = []
+    for key in data.iterkeys():
+      line.append(key+"="+data[key])
+    line.sort()
     self._file.write(" ".join(line) + "\n")
 
 def main():
-  if len(sys.argv) < 5:
-    print("Bad arguments")
+  if len(sys.argv) != 4:
+    print("See script header for usage")
     sys.exit(1)
 
-  normalData = NormalData(sys.argv[1])
-  extraData = ExtraData(sys.argv[2])
-  betterData = BetterData(sys.argv[3])
-  slack = int(sys.argv[4])
-  for normal in normalData:
-    normalTime = int(normal[0])
-    for extra in extraData:
-      extraTime = int(extra[0])
-      if normalTime > extraTime:
-        print("Got unexpected extradata entry" + " ".join(extra))
-        continue
-      if normalTime + slack < extraTime:
-        print("Got a data entry without extradata " + " ".join(normal))
-        extraData.keepCurrent()
+  torperfdata = TorperfData(sys.argv[1])
+  extradata = ExtraData(sys.argv[2])
+  mergedata = MergeData(sys.argv[3])
+  slack = 1.0 # More than 1s means something is really, really wrong
+  lastDataTime = 0
+  lastExtraTime = 0
+  dataLine = 0
+  extraLine = 0
+  mergedYet = False
+  for data in torperfdata:
+    dataLine += 1
+    dataEndTime = int(data["DATACOMPLETESEC"])
+    dataEndTime += int(data["DATACOMPLETEUSEC"])/1000000.0
+    if not dataEndTime:
+      # Skip failures
+      continue
+
+    if lastDataTime > dataEndTime:
+      print "Torperf .data is not monotonic! Sort it by completion time!"
+      print "Line "+str(dataLine)+" "+str(lastDataTime)+" > "+str(dataEndTime)
+      sys.exit(0)
+    lastDataTime = dataEndTime
+    for extra in extradata:
+      extraLine += 1
+      if not "USED_AT" in extra or not extra["USED_AT"]:
+        mergedata.writeLine(extra)
+        continue # Failed circ
+
+      extraEndTime = float(extra["USED_AT"])
+      if lastExtraTime > extraEndTime:
+        print "The .extradata is not monotonic! Sort it by USED_AT!"
+        print "Line "+str(extraLine)+" "+str(lastExtraTime)+" > "+str(extraEndTime)
+        sys.exit(0)
+      lastExtraTime = extraEndTime
+      if abs(dataEndTime - extraEndTime) > slack:
+        if dataEndTime < extraEndTime:
+          if mergedYet:
+            print("Got a data line at "+str(dataLine)+ " without extradata (line "+str(extraLine)+")")
+          extradata.keepCurrent()
+          extraLine -= 1
+          mergedata.writeLine(data)
+        else:
+          torperfdata.keepCurrent()
+          dataLine -= 1
+          mergedata.writeLine(extra)
         break
-      normal.extend(extra)
-      betterData.writeLine(normal)
+
+      mergedYet = True
+      data.update(extra)
+      mergedata.writeLine(data)
       break
-  
+
 
 if __name__ == "__main__":
   main()
