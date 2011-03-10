@@ -267,6 +267,9 @@ struct timeval datacompletetime; // After payload is complete
 size_t read_bytes;
 size_t write_bytes;
 
+// Did we get killed by the bash 'timeout' widget?
+int didtimeout;
+
 static void
 output_status_information(void)
 {
@@ -280,7 +283,8 @@ output_status_information(void)
   print_time(dataresponsetime);
   print_time(datacompletetime);
 
-  printf("%lu %lu\n", (unsigned long)write_bytes, (unsigned long)read_bytes);
+  printf("%lu %lu ", (unsigned long)write_bytes, (unsigned long)read_bytes);
+  printf("%d\n", didtimeout);
 }
 
 /** Send a resolve request for <b>hostname</b> to the Tor listening on
@@ -407,6 +411,8 @@ do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint1
   do_http_get(s, filename, hostname, &read_bytes, &write_bytes,
 	      &datarequesttime, &dataresponsetime, &datacompletetime);
 
+  didtimeout = 0;
+
   // Output status information
   output_status_information();
 
@@ -425,6 +431,13 @@ static void
 termination_handler(int signum)
 {
   fprintf(stderr,"Received a timeout. Exiting.\n");
+  didtimeout = 1;
+
+  // Get when response is complete
+  if (gettimeofday(&datacompletetime, NULL)) {
+    perror("getting datacompletetime for timeout");
+  }
+
   output_status_information();
 
   exit(1);
