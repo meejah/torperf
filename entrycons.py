@@ -120,11 +120,11 @@ def main():
 
   conn = TorCtl.connect(HOST, port)
 
-  conn.set_events(["NEWCONSENSUS", "NEWDESC", "NS", "GUARD"])
   conn.set_option("StrictEntryNodes", "1")
   conn.set_option("UseEntryNodes", "1")
 
   EntryTracker(conn, speed)
+  conn.set_events(["NEWCONSENSUS", "NEWDESC", "NS", "GUARD"])
   conn.block_until_close()
 
 if __name__ == '__main__':
