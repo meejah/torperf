@@ -7,6 +7,7 @@ import copy
 HOST = "127.0.0.1"
 
 SAMPLE_SIZE = 3
+DESCRIPTORS_NEEDED = 0.99 # 99% of descriptors must be downloaded
 
 class EntryTracker(TorCtl.ConsensusTracker):
   used_entries = []
@@ -14,13 +15,28 @@ class EntryTracker(TorCtl.ConsensusTracker):
   def __init__(self, conn, speed):
     TorCtl.ConsensusTracker.__init__(self, conn, consensus_only=False)
     self.speed = speed
-    self.set_entries()
+    self.used_entries = []
+    if self.consensus_count < DESCRIPTORS_NEEDED*len(self.ns_map):
+      TorUtil.plog("NOTICE",
+         "Insufficient routers to choose new guard. Waiting for more..")
+      self.need_guads = True
+    else:
+      self.set_entries()
+      self.need_guards = False
 
   def new_consensus_event(self, n):
     TorCtl.ConsensusTracker.new_consensus_event(self, n)
-    TorUtil.plog("INFO", "New consensus arrived. Rejoice!")
-    self.used_entries = []
-    self.set_entries()
+    self.need_guards = True
+
+  def new_desc_event(self, n):
+    TorCtl.ConsensusTracker.new_desc_event(self, n)
+    if self.need_guards and self.consensus_count >= DESCRIPTORS_NEEDED*len(self.ns_map):
+      TorUtil.plog("INFO", "We have enough routers. Rejoice!")
+      self.used_entries = []
+      self.set_entries()
+      self.need_guards = False
+    else:
+      self.need_guards = True
 
   def guard_event(self, event):
     TorCtl.EventHandler.guard_event(self, event)
@@ -29,11 +45,16 @@ class EntryTracker(TorCtl.ConsensusTracker):
   def handle_entry_deaths(self, event):
     state = event.status
     if (state == "DOWN" or state == "BAD" or state == "DROPPED"):
+      if self.consensus_count < DESCRIPTORS_NEEDED*len(self.ns_map):
+        self.need_guards = True
+        TorUtil.plog("NOTICE",
+           "Insufficient routers to choose new guard. Waiting for more..")
+        return
       nodes_tuple = self.c.get_option("EntryNodes")
       nodes_list = nodes_tuple[0][1].split(",")
       try: 
         nodes_list.remove(event.idhex)
-        nodes_list.append(self.get_next_router(event.idhex, nodes_list))
+        nodes_list.append(self.get_next_guard())
         self.c.set_option("EntryNodes", ",".join(nodes_list))
         TorUtil.plog("NOTICE", "Entry: " + event.nick + ":" + event.idhex +
                      " died, and we replaced it with: " + nodes_list[-1] + "!")
@@ -64,15 +85,18 @@ class EntryTracker(TorCtl.ConsensusTracker):
     elif self.speed == "slowratio":
       routers.sort(lambda x,y: ratio_cmp(y,x))
 
-    # Print top 5 routers + ratios
-    for i in xrange(5):
-      TorUtil.plog("DEBUG", self.speed+" router "+routers[i].nickname+" #"+str(i)+": "
-                    +str(routers[i].bw)+"/"+str(routers[i].desc_bw)+" = "
-                    +str(routers[i].bw/float(routers[i].desc_bw)))
+    # Print top 3 routers + ratios
+    if len(routers) < SAMPLE_SIZE:
+      TorUtil.plog("WARN", "Only "+str(len(routers))+" in our list!")
+    else:
+      for i in xrange(SAMPLE_SIZE):
+        TorUtil.plog("INFO", self.speed+" router "+routers[i].nickname+" #"+str(i)+": "
+                      +str(routers[i].bw)+"/"+str(routers[i].desc_bw)+" = "
+                      +str(routers[i].bw/float(routers[i].desc_bw)))
 
     return routers
 
-  def get_next_router(self, event, nodes_list):
+  def get_next_guard(self):
     # XXX: This is inefficient, but if we do it now, we're sure that
     # we're always using the very latest networkstatus and descriptor data
     sorted_routers = self.sort_routers(self.current_consensus().sorted_r)
