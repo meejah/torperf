@@ -1,20 +1,13 @@
 #!/usr/bin/python
 #
-# This script takes a list of $idhex=nickname OR nickname=idhex lines and
-# prints out min, avg, dev, max statistics based on the current consensus.
+# This script takes a list of extradata files and tells you some statistics
+# about the guard selection used by checking against the current consensus.
 #
-# Be sure to include ratio in the filenames of idhexes that are supposedly
-# chosen by consensus to descriptor ratio values.
+# Use the script like this:
+# ./analyze_guards.py slowratio50kb.extradata slowratio1mb50kb.extradata
 #
-# Here is an example scriptlet for extracting the guards from an extrainfo
-# file:
-#   awk '{ print $3; }' < torperfslowratio-50kb.extradata > slowratio50kb.extra
-#
-# Use this result like this:
-# ./analyze_guards.py slowratio50kb.extra
-#
-# It should then print out ranking stats. Use your brain to determine if these
-# stats make sense for the run you selected.
+# It should then print out ranking stats one per file. Use your brain to
+# determine if these stats make sense for the run you selected.
 
 import sys
 import math
@@ -51,23 +44,29 @@ def analyze_list(router_map, idhex_list):
 
   return (min_rank, avg, math.sqrt(varience/(len(idhex_list)-absent-1)), max_rank, absent)
 
-def main():
-  f = file(sys.argv[1], "r")
+def process_file(router_map, file_name):
+  f = file(file_name, "r")
   idhex_list = f.readlines()
+  guard_list = []
 
   for i in xrange(len(idhex_list)):
-    if "~" in idhex_list[i]: char = "~"
-    else: char = "="
+    line = idhex_list[i].split()
+    path = None
+    used = False
+    for word in line:
+      if word.startswith("PATH="): path = word[5:]
+      if word.startswith("USED_BY"): used = True
 
-    split = idhex_list[i].split(char)
+    if path and used:
+      guard = path.split(",")
+      guard_list.append(guard[0])
 
-    if split[0][0] == "$":
-      idhex_list[i] = split[0]
-    else:
-      idhex_list[i] = "$"+split[1]
+  print "Guard rank stats (min, avg, dev, total, absent): "
+  print file_name + ": " + str(analyze_list(router_map, guard_list))
 
+
+def main():
   c = TorCtl.TorCtl.connect(HOST, PORT)
-  nslist = c.get_network_status()
   sorted_rlist = filter(lambda r: r.desc_bw > 0, c.read_routers(c.get_network_status()))
   router_map = {}
   for r in sorted_rlist: router_map["$"+r.idhex] = r
@@ -88,8 +87,9 @@ def main():
 
   for i in xrange(len(sorted_rlist)): sorted_rlist[i].list_rank = i
 
-  print "Guard rank stats (min, avg, dev, total, absent): "
-  print str(analyze_list(router_map, idhex_list))
+  for file_name in sys.argv[1:]:
+    process_file(router_map, file_name)
+
 
 if __name__ == '__main__':
   main()
