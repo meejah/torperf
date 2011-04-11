@@ -19,7 +19,7 @@ class EntryTracker(TorCtl.ConsensusTracker):
     if self.consensus_count < DESCRIPTORS_NEEDED*len(self.ns_map):
       TorUtil.plog("NOTICE",
          "Insufficient routers to choose new guard. Waiting for more..")
-      self.need_guads = True
+      self.need_guards = True
     else:
       self.set_entries()
       self.need_guards = False
