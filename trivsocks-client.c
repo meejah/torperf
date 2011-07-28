@@ -449,7 +449,7 @@ main(int argc, char **argv)
 {
   uint32_t sockshost;
   uint16_t socksport;
-  int isSocks4 = 0, isVerbose = 0, isReverse = 0, force = 0;
+  int isSocks4 = 0, isReverse = 0;
   char **arg;
   int n_args;
   uint32_t result = 0;
@@ -470,16 +470,12 @@ main(int argc, char **argv)
   }
 
   while (n_args && *arg[0] == '-') {
-    if (!strcmp("-v", arg[0]))
-      isVerbose = 1;
-    else if (!strcmp("-4", arg[0]))
+    if (!strcmp("-4", arg[0]))
       isSocks4 = 1;
     else if (!strcmp("-5", arg[0]))
       isSocks4 = 0;
     else if (!strcmp("-x", arg[0]))
       isReverse = 1;
-    else if (!strcmp("-F", arg[0]))
-      force = 1;
     else {
       fprintf(stderr, "Unrecognized flag '%s'\n", arg[0]);
       usage();
