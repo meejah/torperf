@@ -249,7 +249,7 @@ do_http_get(int s, const char *path, const char *hostname, size_t *read_bytes, s
 
 static int
 print_time(struct timeval t) {
-  return printf("%ld %ld ", t.tv_sec, t.tv_usec);
+  return printf("%ld %ld ", (long int)t.tv_sec, (long int)t.tv_usec);
 }
 
 // Timestamps of important events

@@ -73,6 +73,27 @@ read_all(int fd, char *buf, size_t count, int isSocket)
   return numread;
 }
 
+/** Allocate and return a new string containing the first <b>n</b>
+ * characters of <b>s</b>.  If <b>s</b> is longer than <b>n</b>
+ * characters, only the first <b>n</b> are copied.  The result is
+ * always NUL-terminated.
+ */
+char *
+tor_strndup(const char *s, size_t n)
+{
+  char *dup;
+  dup = malloc(n+1);
+  /* Performance note: Ordinarily we prefer strlcpy to strncpy.  But
+   * this function gets called a whole lot, and platform strncpy is
+   * much faster than strlcpy when strlen(s) is much longer than n.
+   */
+  if (!dup)
+      return dup;
+  strncpy(dup, s, n);
+  dup[n]='\0';
+  return dup;
+}
+
 /**
  * Read a 16-bit value beginning at <b>cp</b>.  Equivalent to
  * *(uint16_t*)(cp), but will not cause segfaults on platforms that forbid
@@ -207,7 +228,7 @@ parse_addr_port(int severity, const char *addrport, char **address,
 
   colon = strchr(addrport, ':');
   if (colon) {
-    _address = strndup(addrport, colon-addrport);
+    _address = tor_strndup(addrport, colon-addrport);
     _port = (int) parse_long(colon+1,10,1,65535,NULL,NULL);
     if (!_port) {
       fprintf(stderr, "Port %s out of range\n", colon+1);
