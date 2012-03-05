@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import sys, time
+import os, re, sys, time
 import TorCtl.TorUtil as TorUtil
 import TorCtl.TorCtl as TorCtl
 
@@ -22,15 +22,18 @@ class Circuit:
     self.stream_fail_reason = None
 
 class WriteStats(TorCtl.PostEventListener):
-  def __init__(self, port, filename):
+  def __init__(self, port, filename, truncate):
     TorCtl.PostEventListener.__init__(self)
     self._port = int(port)
     self._filename = filename
+    self.truncate = truncate
+    self.first_launched = None
     self._conn = None
     self.all_circs = {}
     self.ignore_streams = {}
     self.current_timeout = None
     self.current_quantile = None
+    self.truncate_statsfile()
 
   def connect(self):
     self._conn = TorCtl.connect(HOST, self._port)
@@ -52,6 +55,7 @@ class WriteStats(TorCtl.PostEventListener):
     self.current_quantile = b.cutoff_quantile
     result = b.event_name + " " +b.body
     self.write_result(result)
+    self.truncate_statsfile()
 
   def circ_status_event(self, c):
     if c.status == "LAUNCHED":
@@ -94,6 +98,7 @@ class WriteStats(TorCtl.PostEventListener):
          (self.current_timeout, self.current_quantile)
 
     self.write_result(result)
+    self.truncate_statsfile()
 
   def stream_status_event(self, event):
     if event.status == "NEW":
@@ -140,19 +145,59 @@ class WriteStats(TorCtl.PostEventListener):
 
   def write_result(self, result):
     # XXX: hrmm. seems wasteful to keep opening+closing..
+    # XXX: When changing this, also change truncated_statsfile().
     statsfile = open(self._filename, 'a')
     statsfile.write(result+"\n")
     statsfile.close()
 
+  def truncate_statsfile(self):
+    if not self.truncate:
+      return
+    launched_str = "^.*LAUNCH=([\\d]*).*$"
+    if not self.first_launched:
+      if os.path.isfile(self._filename):
+        launched_re = re.compile(launched_str)
+        with open(self._filename) as statsfile:
+          for line in statsfile:
+            m = launched_re.match(line)
+            if m:
+              self.first_launched = int(m.group(1))
+              break
+      if not self.first_launched:
+        self.first_launched = time.time()
+    now = time.time()
+    if self.first_launched < now - 7 * 24 * 60 * 60:
+      copylines = False
+      statsfilebak_path = self._filename + ".bak"
+      statsfilebak_file = open(statsfilebak_path, "w")
+      launched_re = re.compile(launched_str)
+      with open(self._filename) as statsfile:
+        for line in statsfile:
+          if copylines:
+            statsfilebak_file.write(line)
+          else:
+            m = launched_re.match(line)
+            if m and int(m.group(1)) >= now - 4 * 24 * 60 * 60:
+              statsfilebak_file.write(line)
+              copylines = True
+      statsfilebak_file.close()
+      os.rename(statsfilebak_path, self._filename)
+
 def main():
-  if len(sys.argv) < 3:
+  if len(sys.argv) < 3 or len(sys.argv) > 4:
     print "Bad arguments"
     sys.exit(1)
 
-  port = sys.argv[1]
-  filename = sys.argv[2]
+  truncate = False
+  if (sys.argv[1] == "--truncate"):
+    truncate = True
+    port = sys.argv[2]
+    filename = sys.argv[3]
+  else:
+    port = sys.argv[1]
+    filename = sys.argv[2]
 
-  stats = WriteStats(port, filename)
+  stats = WriteStats(port, filename, truncate)
   stats.connect()
   stats.setup_listener()
   try:
