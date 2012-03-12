@@ -128,16 +128,19 @@ $ crontab -e
 
 */5 * * * * timeout -s2 295 ~/torperf/trivsocks-client
   torperf.torproject.org 127.0.0.1:9020 /.50kbfile >> ~/torperf/50kb.data
-  2>/dev/null; ~/torperf/truncate-data.py ~/torperf/50kb.data
+  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/50kb.data
 2,32 * * * * timeout -s2 1795 ~/torperf/trivsocks-client
   torperf.torproject.org 127.0.0.1:9021 /.1mbfile >> ~/torperf/1mb.data
-  2>/dev/null; ~/torperf/truncate-data.py ~/torperf/1mb.data
+  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/1mb.data
 8 * * * * timeout -s2 3595 ~/torperf/trivsocks-client
   torperf.torproject.org 127.0.0.1:9022 /.5mbfile >> ~/torperf/5mb.data
-  2>/dev/null; ~/torperf/truncate-data.py ~/torperf/5mb.data
+  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/5mb.data
 
 (Omit the truncate-data.py command if you don't want .data files to be
 truncated once per week to contain only the last 4 days of data.)
+
+Note that Python 2.6 or higher is required for the truncate-data.py
+script.
 
 From now on, the three files 50kb.data, 1mb.data, and 5mb.data should
 accumulate lines like this (50kb.data shown here; line breaks are only for
