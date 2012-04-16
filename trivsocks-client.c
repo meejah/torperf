@@ -189,12 +189,15 @@ do_socks5_negotiate(int s){
 }
 
 int
-do_http_get(int s, const char *path, const char *hostname, size_t *read_bytes, size_t *write_bytes,
+do_http_get(int s, const char *path, const char *hostname,
+            size_t expected_bytes, size_t *read_bytes, size_t *write_bytes,
             struct timeval *datarequesttime,
             struct timeval *dataresponsetime,
-            struct timeval *datacompletetime) {
+            struct timeval *datacompletetime,
+            struct timeval *dataperctime) {
   char buf[HTTP_BUF_LEN];
   int len; // Length of request, not including \0
+  int perc_logged = -1; // Last logged timestamp for fraction of received bytes
   char is_first = 1;
 
   len = snprintf(buf, HTTP_BUF_LEN, "GET %s HTTP/1.0\r\nPragma: no-cache\r\n"
@@ -236,6 +239,13 @@ do_http_get(int s, const char *path, const char *hostname, size_t *read_bytes, s
         return -1;
       }
     }
+    while (*read_bytes < expected_bytes &&
+        (*read_bytes * 10) / expected_bytes > perc_logged + 1) {
+      if (gettimeofday(&dataperctime[++perc_logged], NULL)) {
+       perror("getting dataperctime");
+       return -1;
+      }
+    }
   }
 
   // Get when response is complete
@@ -262,6 +272,8 @@ struct timeval responsetime; // After SOCKS response is received
 struct timeval datarequesttime; // After HTTP request is written
 struct timeval dataresponsetime; // After first response is received
 struct timeval datacompletetime; // After payload is complete
+// After (i + 1) * 10% of expected bytes are received
+struct timeval dataperctime[9];
 
 // Data counters of SOCKS payload
 size_t read_bytes;
@@ -273,6 +285,8 @@ int didtimeout;
 static void
 output_status_information(void)
 {
+  int i;
+
   print_time(starttime);
   print_time(sockettime);
   print_time(connecttime);
@@ -284,7 +298,11 @@ output_status_information(void)
   print_time(datacompletetime);
 
   printf("%lu %lu ", (unsigned long)write_bytes, (unsigned long)read_bytes);
-  printf("%d\n", didtimeout);
+  printf("%d ", didtimeout);
+
+  for (i = 0; i < 9; i++)
+    print_time(dataperctime[i]);
+  printf("\n");
 }
 
 /** Send a resolve request for <b>hostname</b> to the Tor listening on
@@ -293,7 +311,7 @@ output_status_information(void)
  */
 static int
 do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint16_t socksport,
-           int reverse, int version,
+           int reverse, int version, size_t expected_bytes,
            uint32_t *result_addr, char **result_hostname)
 {
 
@@ -408,8 +426,10 @@ do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint1
   */
   
   // Request a file using HTTP
-  do_http_get(s, filename, hostname, &read_bytes, &write_bytes,
-              &datarequesttime, &dataresponsetime, &datacompletetime);
+  do_http_get(s, filename, hostname, expected_bytes, &read_bytes, &write_bytes,
+             &datarequesttime, &dataresponsetime, &datacompletetime,
+             dataperctime);
+
 
   didtimeout = 0;
 
@@ -423,7 +443,8 @@ do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint1
 static void
 usage(void)
 {
-  puts("Syntax: trivsocks-client hostname [sockshost:socksport] /path/to/file");
+  puts("Syntax: trivsocks-client hostname [sockshost:socksport] /path/to/file "
+       "expected-bytes");
   exit(1);
 }
 
@@ -455,6 +476,7 @@ main(int argc, char **argv)
   uint32_t result = 0;
   char *result_hostname = NULL;
   char *hostname = NULL, *filename = NULL;
+  size_t expbytes = 0;
 
   signal(SIGINT, termination_handler);
 
@@ -489,13 +511,14 @@ main(int argc, char **argv)
     usage();
   }
 
-  if (n_args == 2) {
+  if (n_args == 3) {
     fprintf(stderr,"defaulting to localhost:9050\n");
     sockshost = 0x7f000001u; /* localhost */
     socksport = 9050; /* 9050 */
     hostname = arg[0];
     filename = arg[1];
-  } else if (n_args == 3) {
+    expbytes = (size_t) parse_long(arg[2], 10, 0, 1024*1024*1024, NULL, NULL);
+  } else if (n_args == 4) {
     if (parse_addr_port(0, arg[1], NULL, &sockshost, &socksport)<0) {
       fprintf(stderr, "Couldn't parse/resolve address %s\n", arg[1]);
       return 1;
@@ -506,12 +529,13 @@ main(int argc, char **argv)
     }
     hostname = arg[0];
     filename = arg[2];
+    expbytes = (size_t) parse_long(arg[3], 10, 0, 1024*1024*1024, NULL, NULL);
   } else {
     usage();
   }
 
   if (do_connect(hostname, filename, sockshost, socksport,
-                 isReverse, isSocks4 ? 4 : 5, &result,
+                 isReverse, isSocks4 ? 4 : 5, expbytes, &result,
                  &result_hostname))
     return 1;
 
