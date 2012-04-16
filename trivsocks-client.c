@@ -117,7 +117,7 @@ parse_socks4a_connect_response(const char *response, size_t len,
 
 static int
 parse_socks5_connect_response(const char *response, size_t len, int s,
-			      uint32_t *result_addr, char **result_hostname)
+                              uint32_t *result_addr, char **result_hostname)
 {
   char reply_buf[4];
   uint16_t port;
@@ -132,7 +132,7 @@ parse_socks5_connect_response(const char *response, size_t len, int s,
   }
   if (response[1] != 0) {
     fprintf(stderr, "Got status response '%u': SOCKS5 request failed\n",
-	    (unsigned)response[1]);
+            (unsigned)response[1]);
     return -1;
   }
 
@@ -190,9 +190,9 @@ do_socks5_negotiate(int s){
 
 int
 do_http_get(int s, const char *path, const char *hostname, size_t *read_bytes, size_t *write_bytes,
-	    struct timeval *datarequesttime,
-	    struct timeval *dataresponsetime,
-	    struct timeval *datacompletetime) {
+            struct timeval *datarequesttime,
+            struct timeval *dataresponsetime,
+            struct timeval *datacompletetime) {
   char buf[HTTP_BUF_LEN];
   int len; // Length of request, not including \0
   char is_first = 1;
@@ -232,8 +232,8 @@ do_http_get(int s, const char *path, const char *hostname, size_t *read_bytes, s
     if (is_first) {
       is_first = 0;
       if (gettimeofday(dataresponsetime, NULL)) {
-	perror("getting dataresponsetime");
-	return -1;
+        perror("getting dataresponsetime");
+        return -1;
       }
     }
   }
@@ -293,7 +293,7 @@ output_status_information(void)
  */
 static int
 do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint16_t socksport,
-	   int reverse, int version,
+           int reverse, int version,
            uint32_t *result_addr, char **result_hostname)
 {
 
@@ -390,7 +390,7 @@ do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint1
       return -1;
     }
     if (parse_socks5_connect_response(reply_buf, RESPONSE_LEN_5, s,
-				      result_addr, result_hostname)<0){
+                                      result_addr, result_hostname)<0){
       return -1;
     }
   }
@@ -409,7 +409,7 @@ do_connect(const char *hostname, const char *filename, uint32_t sockshost, uint1
   
   // Request a file using HTTP
   do_http_get(s, filename, hostname, &read_bytes, &write_bytes,
-	      &datarequesttime, &dataresponsetime, &datacompletetime);
+              &datarequesttime, &dataresponsetime, &datacompletetime);
 
   didtimeout = 0;
 
