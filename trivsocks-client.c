@@ -239,6 +239,9 @@ do_http_get(int s, const char *path, const char *hostname,
         return -1;
       }
     }
+    // Get when the next 10% of expected bytes are received; this is a
+    // while loop for cases when we expect only very few bytes and read
+    // more than 10% of them in a single read_all() call.
     while (*read_bytes < expected_bytes &&
         (*read_bytes * 10) / expected_bytes > perc_logged + 1) {
       if (gettimeofday(&dataperctime[++perc_logged], NULL)) {
