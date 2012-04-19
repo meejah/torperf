@@ -1,9 +1,12 @@
 Torperf change log:
 
-Changes in version 0.0.2 - 2011-??-??
+Changes in version 0.0.2 - 2012-??-??
   - Include <arpa/inet.h> for the BSDs that don't get ntohl from any of
     the other includes.
   - Fix compilation for GCC 4.6 and Mac OS X.
+  - Add an extra_stats.py switch and a new truncate-data.py script to
+    truncate .data and .extradata files to contain only the last 4 days.
+  - Log timestamps for every 10% of received bytes to .data files.
 
 Changes in version 0.0.1 - 2011-04-12
   - Initial release
