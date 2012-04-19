@@ -127,14 +127,17 @@ for formatting purposes here):
 $ crontab -e
 
 */5 * * * * timeout -s2 295 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9020 /.50kbfile >> ~/torperf/50kb.data
-  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/50kb.data
+  torperf.torproject.org 127.0.0.1:9020 /.50kbfile 51200 >>
+  ~/torperf/50kb.data 2>/dev/null;
+  python ~/torperf/truncate-data.py ~/torperf/50kb.data
 2,32 * * * * timeout -s2 1795 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9021 /.1mbfile >> ~/torperf/1mb.data
-  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/1mb.data
+  torperf.torproject.org 127.0.0.1:9021 /.1mbfile 1048576 >>
+  ~/torperf/1mb.data 2>/dev/null;
+  python ~/torperf/truncate-data.py ~/torperf/1mb.data
 8 * * * * timeout -s2 3595 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9022 /.5mbfile >> ~/torperf/5mb.data
-  2>/dev/null; python ~/torperf/truncate-data.py ~/torperf/5mb.data
+  torperf.torproject.org 127.0.0.1:9022 /.5mbfile 5242880 >>
+  ~/torperf/5mb.data 2>/dev/null;
+  python ~/torperf/truncate-data.py ~/torperf/5mb.data
 
 (Omit the truncate-data.py command if you don't want .data files to be
 truncated once per week to contain only the last 4 days of data.)
@@ -249,40 +252,40 @@ three entries above (linebreaks for formatting reasons):
 
 1,6,11,16,21,26,31,36,41,46,51,56 * * * * timeout -2 295
   ~/torperf/trivsocks-client torperf.torproject.org 127.0.0.1:9023
-  /.50kbfile >> ~/torperf/slow50kb.data 2>/dev/null
+  /.50kbfile 51200 >> ~/torperf/slow50kb.data 2>/dev/null
 2,7,12,17,22,27,32,37,42,47,52,57 * * * * timeout -2 295
   ~/torperf/trivsocks-client torperf.torproject.org 127.0.0.1:9026
-  /.50kbfile >> ~/torperf/slowratio50kb.data 2>/dev/null
+  /.50kbfile 51200 >> ~/torperf/slowratio50kb.data 2>/dev/null
 3,8,13,18,23,28,33,38,43,48,53,58 * * * * timeout -2 295
   ~/torperf/trivsocks-client torperf.torproject.org 127.0.0.1:9029
-  /.50kbfile >> ~/torperf/fast50kb.data 2>/dev/null
+  /.50kbfile 51200 >> ~/torperf/fast50kb.data 2>/dev/null
 4,9,14,19,24,29,34,39,44,49,54,59 * * * * timeout -2 295
   ~/torperf/trivsocks-client torperf.torproject.org 127.0.0.1:9032
-  /.50kbfile >> ~/torperf/fastratio50kb.data 2>/dev/null
+  /.50kbfile 51200 >> ~/torperf/fastratio50kb.data 2>/dev/null
 
 8,38 * * * * timeout -2 1795 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9024 /.1mbfile >>
+  torperf.torproject.org 127.0.0.1:9024 /.1mbfile 1048576 >>
   ~/torperf/slow1mb.data 2>/dev/null
 14,44 * * * * timeout -2 1795 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9027 /.1mbfile >>
+  torperf.torproject.org 127.0.0.1:9027 /.1mbfile 1048576 >>
   ~/torperf/slowratio1mb.data 2>/dev/null
 20,50 * * * * timeout -2 1795 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9030 /.1mbfile >>
+  torperf.torproject.org 127.0.0.1:9030 /.1mbfile 1048576 >>
   ~/torperf/fast1mb.data 2>/dev/null
 26,56 * * * * timeout -2 1795 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9033 /.1mbfile >>
+  torperf.torproject.org 127.0.0.1:9033 /.1mbfile 1048576 >>
   ~/torperf/fastratio1mb.data 2>/dev/null
 
 20 * * * * timeout -2 3595 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9025 /.5mbfile >>
+  torperf.torproject.org 127.0.0.1:9025 /.5mbfile 5242880 >>
   ~/torperf/slow5mb.data 2>/dev/null
 32 * * * * timeout -2 3595 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9028 /.5mbfile >>
+  torperf.torproject.org 127.0.0.1:9028 /.5mbfile 5242880 >>
   ~/torperf/slowratio5mb.data 2>/dev/null
 44 * * * * timeout -2 3595 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9031 /.5mbfile >>
+  torperf.torproject.org 127.0.0.1:9031 /.5mbfile 5242880 >>
   ~/torperf/fast5mb.data 2>/dev/null
 56 * * * * timeout -2 3595 ~/torperf/trivsocks-client
-  torperf.torproject.org 127.0.0.1:9034 /.5mbfile >>
+  torperf.torproject.org 127.0.0.1:9034 /.5mbfile 5242880 >>
   ~/torperf/fastratio5mb.data 2>/dev/null
 
