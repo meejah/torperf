@@ -1,0 +1,36 @@
+Perfd is a proof-of-concept implementation of Torperf using Twisted
+
+ - Sets up an HTTP server that serves random data for performance
+   tests.
+
+ - Periodically requests 50 KiB of data from its own HTTP server via
+   Tor (or a local SOCKS proxy in general) and logs timestamps.
+
+Howto:
+
+On Debian, get Twisted core, Twisted Web, and Tor:
+  apt-get install python-twisted-core python-twisted-web tor
+
+Clone twisted-socks and create a symbolic Link to its main source file:
+  git clone https://github.com/kloesing/twisted-socks
+  ln -s twisted-socks/src/socksclient.py .
+
+For local testing, run local Twisted SOCKS proxy:
+  twistd -n socks
+
+For Tor testing, edit PUBLIC_IP and SOCKS_PORT at the bottom of perfd.py.
+
+Start Perfd service which runs in the background:
+  ./perfd start
+
+To restart or stop the service, run
+  ./perfd restart
+or
+  ./perfd stop
+
+Logs are written to perfd.log.  Look out for this log message indicating a
+successful (local-only) Perfd run:
+
+2013-01-22 21:26:13+0100 [SOCKSv4ClientProtocol,client] \
+START=1358886373.87 CONNECT=1358886373.88 DATACOMPLETE=1358886373.88
+

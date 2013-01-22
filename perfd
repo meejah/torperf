@@ -1,0 +1,38 @@
+#!/bin/sh
+PIDFILE=perfd.pid
+TACFILE=perfd.py
+LOGFILE=perfd.log
+
+case "$1" in
+  start)
+    if [ -f $PIDFILE ]; then
+      echo "Perfd is already running!"
+      exit 1
+    fi
+    echo "Starting Perfd."
+    twistd -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE -y $TACFILE
+    ;;
+  restart)
+    if [ -f $PIDFILE ]; then
+      echo "Stopping Perfd."
+      kill `head -1 $PIDFILE`
+    fi
+    echo "Restarting Perfd."
+    twistd -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE -y $TACFILE
+    ;;
+  stop)
+    if [ ! -f $PIDFILE ]; then
+      echo "Perfd is not running!"
+      exit 1
+    fi
+    echo "Stopping Perfd."
+    kill `head -1 $PIDFILE`
+    ;;
+  *)
+    echo "Usage: "$0" {start|restart|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
+
