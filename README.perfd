@@ -79,17 +79,20 @@ B  Make measurement results more realistic
   based on Twisted.  Other options might be BrowserMob, dynaTrace,
   HttpWatch, or Watir.  Special focus should be on easy of deployment.
 
+6 Run a parallel Torperf with a Firefox with the optimistic data patch.
+  See #3875 for the optimistic data patch.
+
 
 C  Add more performance tests
 
-6 Add a test that runs a series of requests to track stream/circ
+7 Add a test that runs a series of requests to track stream/circ
   allocations for #5830.  meejah says there are some decent examples in
   txtorcon's exit_scanner branch and in examples/circuit_failure_rates.py.
 
-7 Write a test that measures upload speed using HTTP POST requests for
+8 Write a test that measures upload speed using HTTP POST requests for
   #7010.
 
-8 Add a performance test to a locally running hidden service.  meejah says
+9 Add a performance test to a locally running hidden service.  meejah says
   that a super-simple version of this is already included in tortxcon in
   examples/launch_tor_with_hidden_service.py and that adding timing code
   would be easy.
