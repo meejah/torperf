@@ -11,8 +11,12 @@ Proof-of-concept implementation of Torperf using Twisted:
 import os
 import sys
 import time
+from tempfile import mkdtemp
 
-from socksclient import SOCKSv4ClientProtocol, SOCKSWrapper
+#from txsocksx.client import SOCKS5ClientEndpoint
+from socksclient import SOCKSWrapper
+
+import txtorcon
 
 from twisted.application.internet import TimerService
 from twisted.application import internet, service
@@ -22,8 +26,7 @@ from twisted.internet.interfaces import IPullProducer
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.protocols.basic import FileSender
 from twisted.web.client import HTTPClientFactory
-from twisted.web.error import NoResource
-from twisted.web.resource import Resource
+from twisted.web.resource import Resource, NoResource
 from twisted.web.server import NOT_DONE_YET, Site
 from twisted.python import log
 
@@ -84,14 +87,6 @@ class PerfdWebHome(Resource):
         else:
             return NoResource()
 
-class PerfdWebServer(object):
-    def __init__(self, application, http_port):
-        """ Create our web server and register it with the Twisted
-            application. """
-        resource = PerfdWebHome()
-        site = Site(resource)
-        perfdService = internet.TCPServer(http_port, site)
-        perfdService.setServiceParent(application)
 
 class PerfdWebRequest(object):
     def __init__(self, host, http_port, socks_port, file_size):
@@ -106,7 +101,8 @@ class PerfdWebRequest(object):
 
     def printResource(self, response):
         self.datacomplete = time.time()
-        print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
+        #print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
+        log.msg('START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete))
 
         """ Eventually support most or all of these:
             START=1338357901.42 # Connection process started
@@ -134,29 +130,57 @@ class PerfdWebRequest(object):
 
     def wrappercb(self, proxy):
         self.connect = time.time()
+        log.msg("connection at" + str(self.connect()))
 
-class PeriodicRequestService(object):
-    def __init__(self, application, frequency, host, http_port,
-            socks_port, file_size):
-        self.host = host
-        self.http_port = http_port
-        self.socks_port = socks_port
-        self.file_size = file_size
-        ts = TimerService(frequency, self.makeRequest)
-        ts.setServiceParent(application)
 
-    def makeRequest(self):
-        PerfdWebRequest(self.host, self.http_port, self.socks_port,
-            self.file_size)
+class TorService(service.Service):
+    implements(service.IService)
+    port = 8080
+    socks_port = 9070
+    frequency = 300
+    file_size = 51200
+    public_ip = '127.0.0.1'             # testing, use real one (or host)
 
-PUBLIC_IP = '127.0.0.1' # For testing only, put in real public IP
-HTTP_PORT = 8080
-SOCKS_PORT = 1080 # For testing only, set to 9050 for Tor
-FREQUENCY = 300
-FILE_SIZE=51200
+    def __init__(self):
+        self.torfactory = txtorcon.TorProtocolFactory()
+        self.connection = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
+        self.resource = PerfdWebHome()
+
+    def startService(self):
+       service.Service.startService(self)
+
+       web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
+       web_endpoint.listen(Site(PerfdWebHome()))
+
+       self._bootstrap().addCallback(self._complete)
+
+
+    def _bootstrap(self):
+        self.config = txtorcon.TorConfig()
+        self.config.SocksPort = self.socks_port
+        self.config.HiddenServices = [
+            txtorcon.HiddenService(self.config, mkdtemp(),
+                                   ['%d 127.0.0.1:%d' %  (80, self.port)])
+        ]
+        self.config.save()
+#        return txtorcon.build_local_tor_connection(reactor)
+        return txtorcon.launch_tor(self.config, reactor,
+                                   progress_updates=self._updates, tor_binary='/usr/local/bin/tor')
+
+
+    def _updates(self, prog, tag, summary):
+        log.msg('%d%%: %s' % (prog, summary))
+
+
+    def _complete(self, proto):
+        log.msg(self.config.HiddenServices[0].hostname)
+
+        log.msg("Launching periodic requests every %f seconds" % self.frequency)
+        self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
+                                                  self.port, self.socks_port, self.file_size)
+        self.service_requestor.start(self.frequency)
+
 
 application = service.Application("perfd")
-PerfdWebServer(application, HTTP_PORT)
-PeriodicRequestService(application, FREQUENCY, PUBLIC_IP, HTTP_PORT,
-    SOCKS_PORT, FILE_SIZE)
-
+torservice = TorService()
+torservice.setServiceParent(application)
