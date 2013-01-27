@@ -146,7 +146,6 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
     frequency = 60
     file_size = 51200
     public_ip = '127.0.0.1'             # testing, use real one (or host)
-    public_ip = 'atlantis.meejah.ca'
 
     def __init__(self):
         self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
@@ -200,6 +199,7 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         self.tor_state = state
         self.tor_state.add_circuit_listener(self)
         self.tor_state.add_stream_listener(self)
+        self.tor_state.set_attacher(self, reactor)
         self.buildOneCircuit()
 
         log.msg('Connected to Tor version %s' % state.protocol.version)
@@ -216,7 +216,17 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
 
     ## txtorcon.IStreamAttacher
     def attach_stream(self, stream, circuits):
-        pass
+        print "Being asked to attach stream:", stream
+
+        if len(self.completed_circuits):
+            if stream.target_addr == self.public_ip or stream.target_host == self.public_ip:
+                ## FIXME choose differenlty, presumably (takes first one)
+                circ = self.completed_circuits.values()[0]
+                print "ATTACHING to", circ
+                return circ
+
+        # tell Tor to choose for us
+        return None
 
     ## txtorcon.IStreamListener
     def stream_new(self, stream):
