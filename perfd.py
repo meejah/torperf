@@ -87,12 +87,13 @@ class PerfdWebRequest(object):
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
         wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
+        print 'Preparing request to "%s" via SOCKS on %d for %d bytes' % (url, socks_port, file_size)
         factory = client.HTTPClientFactory(url)
-        factory.deferred.addCallback(self.printResource)
+        factory.deferred.addCallback(self.printStatistics)
         deferred = wrapper.connect(factory)
-        deferred.addCallback(self.wrappercb)
+        deferred.addCallback(self._connected)
 
-    def printResource(self, response):
+    def _printStatistics(self, response):
         self.datacomplete = time.time()
         #print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
         log.msg('START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete))
@@ -121,7 +122,7 @@ class PerfdWebRequest(object):
             DATAPERC90=1338357902.79 # After 90% of expected bytes are read (optional field)
         """
 
-    def wrappercb(self, proxy):
+    def _connected(self, proxy):
         self.connect = time.time()
         log.msg("connection at" + str(self.connect()))
 
@@ -129,10 +130,11 @@ class PerfdWebRequest(object):
 class TorService(service.Service):
     implements(service.IService)
     port = 8080
-    socks_port = 9070
+    socks_port = 9050
     frequency = 300
     file_size = 51200
     public_ip = '127.0.0.1'             # testing, use real one (or host)
+    public_ip = 'atlantis.meejah.ca'
 
     def __init__(self):
         self.torfactory = txtorcon.TorProtocolFactory()
@@ -145,8 +147,11 @@ class TorService(service.Service):
        web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
        web_endpoint.listen(server.Site(PerfdWebHome()))
 
-       self._bootstrap().addCallback(self._complete)
+       self._bootstrap().addCallback(self._complete).addErrback(self._error)
 
+    def _error(self, fail):
+        sys.stderr.write(fail.getBriefTraceback())
+        return fail
 
     def _bootstrap(self):
         self.config = txtorcon.TorConfig()
@@ -156,9 +161,7 @@ class TorService(service.Service):
                                    ['%d 127.0.0.1:%d' %  (80, self.port)])
         ]
         self.config.save()
-#        return txtorcon.build_local_tor_connection(reactor)
-        return txtorcon.launch_tor(self.config, reactor,
-                                   progress_updates=self._updates, tor_binary='/usr/local/bin/tor')
+        return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=False)
 
 
     def _updates(self, prog, tag, summary):
@@ -166,13 +169,16 @@ class TorService(service.Service):
 
 
     def _complete(self, proto):
-        log.msg(self.config.HiddenServices[0].hostname)
-
+        log.msg('Connected to Tor version %s' % proto.version)
         log.msg("Launching periodic requests every %f seconds" % self.frequency)
-        self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
-                                                  self.port, self.socks_port, self.file_size)
-        self.service_requestor.start(self.frequency)
-
+        if False:
+            self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
+                                                      self.port, self.socks_port, self.file_size)
+            self.service_requestor.start(self.frequency)
+        else:
+            self.service_requestor = task.LoopingCall(PerfdWebRequest, self.public_ip,
+                                                      self.port, self.socks_port, self.file_size)
+            self.service_requestor.start(self.frequency)
 
 application = service.Application("perfd")
 torservice = TorService()
