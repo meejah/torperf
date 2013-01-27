@@ -286,6 +286,7 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         """
         A circuit has been closed cleanly (won't be in controller's list any more).
         """
+        self._check_closed_circuit(circuit)
 
     def circuit_failed(self, circuit, reason):
         """A circuit has been closed because something went wrong."""
@@ -300,6 +301,16 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
             sys.stderr.write("One of our outstanding circuits failed!\n")
             print "Circuit took %f seconds to fail." % diff
             self.outstanding_circuits.remove(circuit)
+            self.buildOneCircuit()
+
+        self._check_closed_circuit(circuit)
+
+    def _check_closed_circuit(self, circuit):
+        print "closed?", circuit, self.completed_circuits
+        if circuit.id in self.completed_circuits:
+            print "OUR CIRCUIT got CLOSED!"
+            del self.completed_circuits[circuit.id]
+            print "building a new one"
             self.buildOneCircuit()
 
 application = service.Application("perfd")
