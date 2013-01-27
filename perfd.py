@@ -18,26 +18,19 @@ from socksclient import SOCKSWrapper
 
 import txtorcon
 
-from twisted.application.internet import TimerService
-from twisted.application import internet, service
-from twisted.internet import defer, endpoints, protocol, reactor, task
-from twisted.internet.defer import Deferred
-from twisted.internet.interfaces import IPullProducer
-from twisted.internet.protocol import Protocol, ClientFactory
-from twisted.protocols.basic import FileSender
-from twisted.web.client import HTTPClientFactory
-from twisted.web.resource import Resource, NoResource
-from twisted.web.server import NOT_DONE_YET, Site
+from twisted.application import service
+from twisted.internet import defer, endpoints, reactor, task, interfaces
+from twisted.web import client, resource, server
 from twisted.python import log
 
 from zope.interface import implements
 
-class UrandomResource(Resource):
+class UrandomResource(resource.Resource):
     """ Pseudo-random data resource to be served via our web server.
         Maybe this code is overly complex, and we can instead write
         pseudo-random files to disk once and serve them with some
         standard Twisted foo. """
-    implements(IPullProducer)
+    implements(interfaces.IPullProducer)
 
     def beginProducing(self, consumer):
         self.consumer = consumer
@@ -71,21 +64,21 @@ class UrandomResource(Resource):
         def cbFinished(ignored):
             request.finish()
         d.addErrback(err).addCallback(cbFinished)
-        return NOT_DONE_YET
+        return server.NOT_DONE_YET
 
     def getChild(self, name, request):
         if len(name) > 7 or not name.isdigit():
-            return NoResource()
+            return resource.NoResource()
         else:
             self.size = int(name)
             return self
 
-class PerfdWebHome(Resource):
+class PerfdWebHome(resource.Resource):
     def getChild(self, name, request):
         if name == 'urandom':
             return UrandomResource()
         else:
-            return NoResource()
+            return resource.NoResource()
 
 
 class PerfdWebRequest(object):
@@ -94,7 +87,7 @@ class PerfdWebRequest(object):
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
         wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        factory = HTTPClientFactory(url)
+        factory = client.HTTPClientFactory(url)
         factory.deferred.addCallback(self.printResource)
         deferred = wrapper.connect(factory)
         deferred.addCallback(self.wrappercb)
@@ -150,7 +143,7 @@ class TorService(service.Service):
        service.Service.startService(self)
 
        web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
-       web_endpoint.listen(Site(PerfdWebHome()))
+       web_endpoint.listen(server.Site(PerfdWebHome()))
 
        self._bootstrap().addCallback(self._complete)
 
