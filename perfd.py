@@ -89,7 +89,7 @@ class PerfdWebRequest(object):
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
         print 'Preparing request to "%s" via SOCKS on %d for %d bytes' % (url, socks_port, file_size)
         factory = client.HTTPClientFactory(url)
-        factory.deferred.addCallback(self.printStatistics)
+        factory.deferred.addCallback(self._printStatistics)
         deferred = wrapper.connect(factory)
         deferred.addCallback(self._connected)
 
@@ -127,8 +127,12 @@ class PerfdWebRequest(object):
         log.msg("connection at" + str(self.connect()))
 
 
-class TorService(service.Service):
-    implements(service.IService)
+class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, txtorcon.CircuitListenerMixin):
+    implements(service.IService,
+               txtorcon.IStreamAttacher,
+               txtorcon.IStreamListener,
+               txtorcon.ICircuitListener)
+
     port = 8080
     socks_port = 9050
     frequency = 300
@@ -137,15 +141,22 @@ class TorService(service.Service):
     public_ip = 'atlantis.meejah.ca'
 
     def __init__(self):
-        self.torfactory = txtorcon.TorProtocolFactory()
-        self.connection = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
+        self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
         self.resource = PerfdWebHome()
+        self.outstanding_circuits = []
+        '''Circuits we've asked to be built, but aren't yet complete (items are circuit IDs)'''
+
+        self.completed_circuits = {}
+        '''Circuits we've successfully built ourselves (key is circuit ID, value is Circuit object)'''
+
+    def buildOneCircuit(self):
+        d = 
 
     def startService(self):
        service.Service.startService(self)
 
-       web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
-       web_endpoint.listen(server.Site(PerfdWebHome()))
+       self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
+       self.web_endpoint.listen(server.Site(PerfdWebHome()))
 
        self._bootstrap().addCallback(self._complete).addErrback(self._error)
 
@@ -154,13 +165,6 @@ class TorService(service.Service):
         return fail
 
     def _bootstrap(self):
-        self.config = txtorcon.TorConfig()
-        self.config.SocksPort = self.socks_port
-        self.config.HiddenServices = [
-            txtorcon.HiddenService(self.config, mkdtemp(),
-                                   ['%d 127.0.0.1:%d' %  (80, self.port)])
-        ]
-        self.config.save()
         return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=False)
 
 
@@ -175,11 +179,71 @@ class TorService(service.Service):
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
                                                       self.port, self.socks_port, self.file_size)
             self.service_requestor.start(self.frequency)
+
         else:
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.public_ip,
                                                       self.port, self.socks_port, self.file_size)
             self.service_requestor.start(self.frequency)
 
+    ## txtorcon.IStreamAttacher
+    def attach_stream(stream, circuits):
+        pass
+
+    ## txtorcon.IStreamListener
+    def stream_new(stream):
+        "a new stream has been created"
+
+    def stream_succeeded(stream):
+        "stream has succeeded"
+
+    def stream_attach(stream, circuit):
+        "the stream has been attached to a circuit"
+
+    def stream_detach(stream, reason):
+        "the stream has been detached from its circuit"
+
+    def stream_closed(stream):
+        "stream has been closed (won't be in controller's list anymore)"
+
+    def stream_failed(stream, reason, remote_reason):
+        "stream failed for some reason (won't be in controller's list anymore)"
+
+    ## txtorcon.ICircuitListener
+    def circuit_new(circuit):
+        """A new circuit has been created.  You'll always get one of
+        these for every Circuit even if it doesn't go through the "launched"
+        state."""
+
+    def circuit_launched(circuit):
+        "A new circuit has been started."
+
+    def circuit_extend(circuit, router):
+        "A circuit has been extended to include a new router hop."
+
+    def circuit_built(circuit):
+        """
+        A circuit has been extended to all hops (usually 3 for user
+        circuits).
+        """
+
+    def circuit_closed(circuit):
+        """
+        A circuit has been closed cleanly (won't be in controller's list any more).
+        """
+
+    def circuit_failed(circuit, reason):
+        """A circuit has been closed because something went wrong.
+
+        The circuit won't be in the TorState's list anymore. The
+        reason comes from Tor (see tor-spec.txt). It is one of the
+        following strings: MISC, RESOLVEFAILED, CONNECTREFUSED,
+        EXITPOLICY, DESTROY, DONE, TIMEOUT, NOROUTE, HIBERNATING,
+        INTERNAL,RESOURCELIMIT, CONNRESET, TORPROTOCOL, NOTDIRECTORY,
+        END, PRIVATE_ADDR.
+
+        However, don't depend on that: it could be anything.
+        """
+
 application = service.Application("perfd")
-torservice = TorService()
+torservice = TorCircuitCreationService()
 torservice.setServiceParent(application)
