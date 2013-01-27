@@ -25,6 +25,9 @@ from twisted.python import log
 
 from zope.interface import implements
 
+# more verbose output
+DEBUG = False
+
 class UrandomResource(resource.Resource):
     """ Pseudo-random data resource to be served via our web server.
         Maybe this code is overly complex, and we can instead write
@@ -143,9 +146,11 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
     frequency = 60
     file_size = 51200
     public_ip = '127.0.0.1'             # testing, use real one (or host)
+    public_ip = 'atlantis.meejah.ca'
 
     def __init__(self):
         self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
+        self.tor_state = None
         self.resource = PerfdWebHome()
         self.outstanding_circuits = []
         '''Circuits we've asked to be built, but aren't yet complete (items are circuit IDs)'''
@@ -154,7 +159,22 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         '''Circuits we've successfully built ourselves (key is circuit ID, value is Circuit object)'''
 
     def buildOneCircuit(self):
-        pass
+        if self.tor_state is None:
+            raise RuntimeError("Tor connection not available yet.")
+
+        sys.stderr.write('Requesting a circuit.\n')
+        d = self.tor_state.build_circuit(None)
+        d.addCallback(self._circuitUnderConstruction)
+
+    def _circuitUnderConstruction(self, circ):
+        if DEBUG:
+            sys.stderr.write('Circuit being establised! ' + str(circ) + '\n')
+        self.outstanding_circuits.append(circ)
+        circ.start_time = time.time()
+
+    def _newlyBuiltCircuit(self, circ):
+        """circ is now in self.completed_circuits and was just built."""
+        print "WE HAVE ONE of ours:", circ
 
     def startService(self):
        service.Service.startService(self)
@@ -169,15 +189,20 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         return fail
 
     def _bootstrap(self):
-        return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=False)
+        return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=True)
 
 
     def _updates(self, prog, tag, summary):
         log.msg('%d%%: %s' % (prog, summary))
 
 
-    def _complete(self, proto):
-        log.msg('Connected to Tor version %s' % proto.version)
+    def _complete(self, state):
+        self.tor_state = state
+        self.tor_state.add_circuit_listener(self)
+        self.tor_state.add_stream_listener(self)
+        self.buildOneCircuit()
+
+        log.msg('Connected to Tor version %s' % state.protocol.version)
         log.msg("Launching periodic requests every %f seconds" % self.frequency)
         if False:
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
@@ -190,63 +215,82 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
             self.service_requestor.start(self.frequency)
 
     ## txtorcon.IStreamAttacher
-    def attach_stream(stream, circuits):
+    def attach_stream(self, stream, circuits):
         pass
 
     ## txtorcon.IStreamListener
-    def stream_new(stream):
+    def stream_new(self, stream):
         "a new stream has been created"
 
-    def stream_succeeded(stream):
+    def stream_succeeded(self, stream):
         "stream has succeeded"
 
-    def stream_attach(stream, circuit):
+    def stream_attach(self, stream, circuit):
         "the stream has been attached to a circuit"
+        sys.stderr.write('attach: %s -> %s\n' % (str(stream), str(circuit)))
 
-    def stream_detach(stream, reason):
+    def stream_detach(self, stream, reason):
         "the stream has been detached from its circuit"
 
-    def stream_closed(stream):
+    def stream_closed(self, stream):
         "stream has been closed (won't be in controller's list anymore)"
 
-    def stream_failed(stream, reason, remote_reason):
+    def stream_failed(self, stream, reason, remote_reason):
         "stream failed for some reason (won't be in controller's list anymore)"
 
     ## txtorcon.ICircuitListener
-    def circuit_new(circuit):
+    def circuit_new(self, circuit):
         """A new circuit has been created.  You'll always get one of
         these for every Circuit even if it doesn't go through the "launched"
         state."""
 
-    def circuit_launched(circuit):
+    def circuit_launched(self, circuit):
         "A new circuit has been started."
 
-    def circuit_extend(circuit, router):
+    def circuit_extend(self, circuit, router):
         "A circuit has been extended to include a new router hop."
+        if circuit in self.outstanding_circuits:
+            sys.stderr.write('ONE OF OURS extended: %s %s\n' % (str(circuit), str(router)))
 
-    def circuit_built(circuit):
+        if DEBUG:
+            sys.stderr.write('Extend: %s %s\n' % (str(circuit), str(router)))
+
+    def circuit_built(self, circuit):
         """
         A circuit has been extended to all hops (usually 3 for user
         circuits).
         """
+        if circuit in self.outstanding_circuits:
+            sys.stderr.write('OURS is built: %s\n' % str(circuit))
+            self.completed_circuits[circuit.id] = circuit
+            self.outstanding_circuits.remove(circuit)
+            self._newlyBuiltCircuit(circuit)
+            circuit.built_time = time.time()
+            diff = circuit.built_time - circuit.start_time
+            print "Circuit took %f seconds to build." % diff
 
-    def circuit_closed(circuit):
+        if DEBUG:
+            sys.stderr.write('built: %s\n' % (str(circuit)))
+
+    def circuit_closed(self, circuit):
         """
         A circuit has been closed cleanly (won't be in controller's list any more).
         """
 
-    def circuit_failed(circuit, reason):
-        """A circuit has been closed because something went wrong.
+    def circuit_failed(self, circuit, reason):
+        """A circuit has been closed because something went wrong."""
 
-        The circuit won't be in the TorState's list anymore. The
-        reason comes from Tor (see tor-spec.txt). It is one of the
-        following strings: MISC, RESOLVEFAILED, CONNECTREFUSED,
-        EXITPOLICY, DESTROY, DONE, TIMEOUT, NOROUTE, HIBERNATING,
-        INTERNAL,RESOURCELIMIT, CONNRESET, TORPROTOCOL, NOTDIRECTORY,
-        END, PRIVATE_ADDR.
+        if DEBUG:
+            sys.stderr.write('failed: %s %s\n' % (str(circuit), str(reason)))
 
-        However, don't depend on that: it could be anything.
-        """
+        if circuit in self.outstanding_circuits:
+            circuit.failed_time = time.time()
+            diff = circuit.failed_time - circuit.start_time
+
+            sys.stderr.write("One of our outstanding circuits failed!\n")
+            print "Circuit took %f seconds to fail." % diff
+            self.outstanding_circuits.remove(circuit)
+            self.buildOneCircuit()
 
 application = service.Application("perfd")
 torservice = TorCircuitCreationService()
