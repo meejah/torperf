@@ -89,13 +89,18 @@ class PerfdWebRequest(object):
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
         print 'Preparing request to "%s" via SOCKS on %d for %d bytes' % (url, socks_port, file_size)
         factory = client.HTTPClientFactory(url)
-        factory.deferred.addCallback(self._printStatistics)
+        factory.deferred.addCallback(self._printStatistics).addErrback(self._error)
         deferred = wrapper.connect(factory)
         deferred.addCallback(self._connected)
+
+    def _error(self, *args):
+        sys.stderr.write(fail.getBriefTraceback())
+        return fail
 
     def _printStatistics(self, response):
         self.datacomplete = time.time()
         #print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
+        print "elapsed:", (self.datacomplete - self.start)
         log.msg('START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete))
 
         """ Eventually support most or all of these:
@@ -124,7 +129,7 @@ class PerfdWebRequest(object):
 
     def _connected(self, proxy):
         self.connect = time.time()
-        log.msg("connection at" + str(self.connect()))
+        log.msg("connection at " + str(self.connect))
 
 
 class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, txtorcon.CircuitListenerMixin):
@@ -135,10 +140,9 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
 
     port = 8080
     socks_port = 9050
-    frequency = 300
+    frequency = 60
     file_size = 51200
     public_ip = '127.0.0.1'             # testing, use real one (or host)
-    public_ip = 'atlantis.meejah.ca'
 
     def __init__(self):
         self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
@@ -150,7 +154,7 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         '''Circuits we've successfully built ourselves (key is circuit ID, value is Circuit object)'''
 
     def buildOneCircuit(self):
-        d = 
+        pass
 
     def startService(self):
        service.Service.startService(self)
@@ -247,3 +251,6 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
 application = service.Application("perfd")
 torservice = TorCircuitCreationService()
 torservice.setServiceParent(application)
+
+if __name__ == '__main__':
+    print 'Please use "twistd -noy perfd.py" to launch perfd.py for debugging, or use the "perfd" shell script'
