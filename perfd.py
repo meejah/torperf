@@ -21,12 +21,30 @@ import txtorcon
 from twisted.application import service
 from twisted.internet import defer, endpoints, reactor, task, interfaces
 from twisted.web import client, resource, server
-from twisted.python import log
+from twisted.python import log, usage
+from twisted.plugin import IPlugin
 
 from zope.interface import implements
 
 # more verbose output
 DEBUG = False
+
+class Options(usage.Options):
+    """
+    command-line options we understand
+    """
+
+    optParameters = [
+        ['circuits', 'C', 1, 'Number of circuits to use for performance-testing.', int],
+        ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
+        ['delay', 'n', 60, 'Seconds between performance tests.', int],
+        ['port', 'p', 8080, 'Port to contact on the server.', int],
+        ['socks-port', 's', 9050, 'Port of the SOCKS proxy to use.', int],
+        ['file-size', 'f', 51200, 'Size of the file the server will serve.', int],
+        ['public-host', 'h', '127.0.0.1', 'Public IP address or hostname the server will be reachable at.'],
+        ['debug-txtorcon', 'D', False, "Turn on txtorcon's debug log."]
+        ]
+
 
 class UrandomResource(resource.Resource):
     """ Pseudo-random data resource to be served via our web server.
@@ -141,13 +159,15 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
                txtorcon.IStreamListener,
                txtorcon.ICircuitListener)
 
-    port = 8080
-    socks_port = 9050
-    frequency = 60
-    file_size = 51200
-    public_ip = '127.0.0.1'             # testing, use real one (or host)
+    def __init__(self, options):
+        self.port = options['port']
+        self.socks_port = options['socks-port']
+        self.frequency = options['delay']
+        self.file_size = options['file-size']
+        self.public_ip = options['public-host']
+        if options['debug-txtorcon']:
+            txtorcon.log.debug_logging()
 
-    def __init__(self):
         self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
         self.tor_state = None
         self.resource = PerfdWebHome()
@@ -320,9 +340,18 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
             print "building a new one"
             self.buildOneCircuit()
 
-application = service.Application("perfd")
-torservice = TorCircuitCreationService()
-torservice.setServiceParent(application)
+
+class TorPerfdPlugin(object):
+    implements(IPlugin, service.IServiceMaker)
+
+    tapname = 'torperfd'
+    description = 'Measure the performance of the Tor network.'
+    options = Options
+
+    def makeService(self, options):
+        return TorCircuitCreationService(options)
+
+serviceMaker = TorPerfdPlugin()
 
 if __name__ == '__main__':
-    print 'Please use "twistd -noy perfd.py" to launch perfd.py for debugging, or use the "perfd" shell script'
+    print 'Please use "twistd -n torperfd" to launch perfd.py for debugging, or use the "perfd" shell script'
