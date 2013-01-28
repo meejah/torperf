@@ -176,12 +176,12 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         print "WE HAVE ONE of ours:", circ
 
     def startService(self):
-       service.Service.startService(self)
+        service.Service.startService(self)
 
-       self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
-       self.web_endpoint.listen(server.Site(PerfdWebHome()))
+        self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
+        self.web_endpoint.listen(server.Site(PerfdWebHome()))
 
-       self._bootstrap().addCallback(self._complete).addErrback(self._error)
+        self._bootstrap().addCallback(self._complete).addErrback(self._error)
 
     def _error(self, fail):
         sys.stderr.write(fail.getBriefTraceback())
@@ -216,6 +216,13 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
 
     ## txtorcon.IStreamAttacher
     def attach_stream(self, stream, circuits):
+        """
+        Note: We can return None (let Tor decide), a Deferred that
+        callbacks with a circuit, or a circuit directly. Or
+        TorState.DO_NOT_ATTACH if we wish to ignore it (i.e. leave it
+        unattached; Tor will nuke this after about 2 minutes).
+        """
+
         print "Being asked to attach stream:", stream
 
         if len(self.completed_circuits):
