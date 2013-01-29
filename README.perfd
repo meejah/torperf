@@ -13,31 +13,55 @@ Perfd is a proof-of-concept implementation of Torperf using Twisted
 Howto
 -----
 
-On Debian, get Twisted core, Twisted Web, and Tor:
-  apt-get install python-twisted-core python-twisted-web tor
+On Debian, get Twisted core, Twisted Web:
+  sudo apt-get install python-twisted-core python-twisted-web
+
+Clone tor, compile, and install it:
+  git clone https://git.torproject.org/tor.git
+  cd tor/
+  sudo apt-get install automake build-essential libssl-dev libevent-dev
+  ./autogen.sh
+  ./configure --disable-asciidoc
+  make
+  sudo make install
+  cd ../
+
+Configure a Tor client and start it:
+  mkdir torclient
+  cd torclient/
+  cat <<EOF >> torclient/torrc
+DataDirectory .
+SocksPort 9050
+ControlPort 9051
+MaxCircuitDirtiness 10 seconds
+UseEntryGuards 0
+RunAsDaemon 1
+Log notice file log
+CookieAuthentication 1
+EOF
+  tor -f torrc
 
 Clone twisted-socks and create a symbolic Link to its main source file:
   git clone https://github.com/kloesing/twisted-socks
   ln -s twisted-socks/src/socksclient.py .
 
-For local testing, run local Twisted SOCKS proxy:
-  twistd -n socks
+Clone txtorcon and follow the instructions in its INSTALL file (copied
+here for convenience):
+  git clone https://github.com/meejah/txtorcon
+  cd txtorcon/
+  sudo apt-get install python-setuptools python-twisted python-ipaddr \
+      python-geoip python-psutil graphviz
+  sudo python setup.py install
+  cd ../
 
-For Tor testing, edit PUBLIC_IP and SOCKS_PORT at the bottom of perfd.py.
+For debugging, run
+  twistd -n torperfd -h $PUBLIC_IP
+with $PUBLIC_IP being the publicly reachable IP address of your host.
 
-Start Perfd service which runs in the background:
-  ./perfd start
+Look out for a log message like this indicating a successful run:
 
-To restart or stop the service, run
-  ./perfd restart
-or
-  ./perfd stop
-
-Logs are written to perfd.log.  Look out for this log message indicating a
-successful (local-only) Perfd run:
-
-2013-01-22 21:26:13+0100 [SOCKSv4ClientProtocol,client] \
-START=1358886373.87 CONNECT=1358886373.88 DATACOMPLETE=1358886373.88
+2013-01-29 12:02:06+0000 [_WrappingProtocol,client] START=1359460923.73 \
+CONNECT=1359460924.73 DATACOMPLETE=1359460926.36
 
 
 Next steps
