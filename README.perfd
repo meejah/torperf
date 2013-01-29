@@ -48,7 +48,7 @@ A  Reach feature parity with current Torperf
 - Use txtorcon, available at https://github.com/meejah/txtorcon, to set up
   local tor clients, configure them, and register for events.  Send
   feedback and enhancement requests to meejah using GitHub's Issues
-  interface.
+  interface.  meejah says examples/monitor.py is a good example.
 
 - Decide on a Twisted SOCKS client implementation and extend it to capture
   more timestamps.  Options are:
@@ -63,6 +63,9 @@ A  Reach feature parity with current Torperf
   events and to provide results via the same web server that is used for
   measurements.  Either offer results in JSON format, or (preferably) in
   Torperf's key=value format.
+
+- Make web server listen on port 80, not 8080, and drop privileges
+  afterwards.
 
 
 B  Make measurement results more realistic
