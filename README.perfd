@@ -98,7 +98,9 @@ B  Make measurement results more realistic
   (not PhantomJS) available at https://github.com/willscott/pagespeed.
   meejah suspects that all we need to make this work is Twisted's
   event-based subprocess launching which txtorcon uses to launch slave
-  Tors.
+  Tors.  Will suggests to add a few time()'s to make sure that the
+  timestamps Firefox reports are plausible.  Add Will as co-author when
+  integrating pagespeed code.
 
 - Ponder adding a measuring proxy between Firefox and Tor to capture more
   timestamps.  One option might be Rob van der Hoeven's Monitor In The
