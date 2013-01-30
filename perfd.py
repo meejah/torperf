@@ -103,11 +103,12 @@ class PerfdWebHome(resource.Resource):
 
 class PerfdWebRequest(object):
     def __init__(self, host, http_port, socks_port, file_size):
-        self.start = time.time()
+        self.times = {}
+        self.timer = interfaces.IReactorTime(reactor)
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
-        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)
+        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
+                               self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        print 'Preparing request to "%s" via SOCKS on %d for %d bytes' % (url, socks_port, file_size)
         factory = client.HTTPClientFactory(url)
         factory.deferred.addCallback(self._printStatistics).addErrback(self._error)
         deferred = wrapper.connect(factory)
@@ -118,10 +119,8 @@ class PerfdWebRequest(object):
         return fail
 
     def _printStatistics(self, response):
-        self.datacomplete = time.time()
-        #print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
-        print "elapsed:", (self.datacomplete - self.start)
-        log.msg('START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete))
+        self.times['DATACOMPLETE'] = self.timer.seconds()
+        log.msg(self.times)
 
         """ Eventually support most or all of these:
             START=1338357901.42 # Connection process started
@@ -148,8 +147,7 @@ class PerfdWebRequest(object):
         """
 
     def _connected(self, proxy):
-        self.connect = time.time()
-        log.msg("connection at " + str(self.connect))
+        pass
 
 
 class TorCircuitCreationService(service.Service):
