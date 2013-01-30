@@ -83,6 +83,11 @@ A  Reach feature parity with current Torperf
     Arturo's implementation, our trivsocks-client C implementation, and
     maybe tor-resolve.py in tor's contrib/.
 
+- Add timestamps, exact byte sizes, etc. to HTTP requests.
+
+- Add configurable request timeouts, and make sure that timed-out requests
+  are logged correctly.
+
 - Use a database, maybe SQLite, to store request timestamps and controller
   events and to provide results via the same web server that is used for
   measurements.  Either offer results in JSON format, or (preferably) in
