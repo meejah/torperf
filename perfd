@@ -18,6 +18,7 @@ case "$1" in
     if [ -f $PIDFILE ]; then
       echo "Stopping Perfd."
       kill `head -1 $PIDFILE`
+      rm $PIDFILE
     fi
     echo "Restarting Perfd."
     twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
@@ -29,6 +30,7 @@ case "$1" in
     fi
     echo "Stopping Perfd."
     kill `head -1 $PIDFILE`
+    rm $PIDFILE
     ;;
   *)
     echo "Usage: "$0" {start|restart|stop}"
