@@ -119,7 +119,9 @@ B  Make measurement results more realistic
 
 C  Add more performance tests
 
-- Adopt modified guard node selection code from entrycons.py.
+- Adopt modified guard node selection code from entrycons.py.  Consider
+  re-using parts of meejah's circuit-building and stream-attaching code
+  taken out in 4d8ca65.
 
 - Add a test that runs a series of requests to track stream/circ
   allocations for #5830.  meejah says there are some decent examples in
