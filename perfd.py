@@ -38,7 +38,7 @@ class Options(usage.Options):
         ['circuits', 'C', 1, 'Number of circuits to use for performance-testing.', int],
         ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
         ['delay', 'n', 60, 'Seconds between performance tests.', int],
-        ['port', 'p', 8080, 'Port to contact on the server.', int],
+        ['port', 'p', 81, 'Port to contact on the server.', int],
         ['socks-port', 's', 9050, 'Port of the SOCKS proxy to use.', int],
         ['file-size', 'f', 51200, 'Size of the file the server will serve.', int],
         ['public-host', 'h', '127.0.0.1', 'Public IP address or hostname the server will be reachable at.'],
@@ -195,7 +195,7 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         """circ is now in self.completed_circuits and was just built."""
         print "WE HAVE ONE of ours:", circ
 
-    def startService(self):
+    def privilegedStartService(self):
         service.Service.startService(self)
 
         self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)

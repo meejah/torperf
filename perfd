@@ -1,7 +1,9 @@
 #!/bin/sh
 PIDFILE=perfd.pid
-TACFILE=perfd.py
+TACFILE=torperfd
 LOGFILE=perfd.log
+USER=debian-tor
+GROUP=debian-tor
 
 case "$1" in
   start)
@@ -10,7 +12,7 @@ case "$1" in
       exit 1
     fi
     echo "Starting Perfd."
-    twistd -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE -y $TACFILE
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
     ;;
   restart)
     if [ -f $PIDFILE ]; then
@@ -18,7 +20,7 @@ case "$1" in
       kill `head -1 $PIDFILE`
     fi
     echo "Restarting Perfd."
-    twistd -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE -y $TACFILE
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
     ;;
   stop)
     if [ ! -f $PIDFILE ]; then
