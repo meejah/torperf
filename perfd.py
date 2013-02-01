@@ -12,6 +12,7 @@ import os
 import sys
 import time
 #from tempfile import mkdtemp
+import functools
 
 #from txsocksx.client import SOCKS5ClientEndpoint
 from socksclient import SOCKSWrapper
@@ -23,6 +24,7 @@ from twisted.internet import defer, endpoints, reactor, task, interfaces
 from twisted.web import client, resource, server
 from twisted.python import log, usage
 from twisted.plugin import IPlugin
+from twisted.trial import unittest
 
 from zope.interface import implements
 
@@ -35,7 +37,8 @@ class Options(usage.Options):
     """
 
     optParameters = [
-        ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
+#        ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
+        ['concurrent', 'c', 1, 'Number of slave Tor processes to launch.', int],
         ['delay', 'n', 60, 'Seconds between performance tests.', int],
         ['port', 'p', 81, 'Port to contact on the server.', int],
         ['socks-port', 's', 9050, 'Port of the SOCKS proxy to use.', int],
@@ -106,8 +109,8 @@ class PerfdWebRequest(object):
         self.times = {}
         self.timer = interfaces.IReactorTime(reactor)
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
-        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
-                               self.times)
+        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)#,
+#                               self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
         factory = client.HTTPClientFactory(url)
         factory.deferred.addCallback(self._printStatistics).addErrback(self._error)
@@ -153,7 +156,7 @@ class PerfdWebRequest(object):
 class TorCircuitCreationService(service.Service):
     implements(service.IService)
 
-    def __init__(self, options):
+    def __init__(self, reactor, options):
         self.port = options['port']
         self.socks_port = options['socks-port']
         self.frequency = options['delay']
@@ -161,31 +164,15 @@ class TorCircuitCreationService(service.Service):
         self.public_ip = options['public-host']
         if options['debug-txtorcon']:
             txtorcon.log.debug_logging()
+        self.slave_tor_count = options['concurrent']
 
-        self.tor_state = None
-        self.outstanding_circuits = []
-        '''Circuits we've asked to be built, but aren't yet complete (items are circuit IDs)'''
+        self.slave_tors = []
+        """All the Tor instances we have launched."""
 
-        self.completed_circuits = {}
-        '''Circuits we've successfully built ourselves (key is circuit ID, value is Circuit object)'''
-
-    def buildOneCircuit(self):
-        if self.tor_state is None:
-            raise RuntimeError("Tor connection not available yet.")
-
-        sys.stderr.write('Requesting a circuit.\n')
-        d = self.tor_state.build_circuit(None)
-        d.addCallback(self._circuitUnderConstruction)
-
-    def _circuitUnderConstruction(self, circ):
-        if DEBUG:
-            sys.stderr.write('Circuit being establised! ' + str(circ) + '\n')
-        self.outstanding_circuits.append(circ)
-        circ.start_time = time.time()
-
-    def _newlyBuiltCircuit(self, circ):
-        """circ is now in self.completed_circuits and was just built."""
-        print "WE HAVE ONE of ours:", circ
+    def _addSlave(self, config, slave):
+        print "Slave successfully launched!", config, slave
+        self.slave_tors.append(slave.protocol)
+        self._complete(slave.protocol)
 
     def privilegedStartService(self):
         service.Service.startService(self)
@@ -193,7 +180,13 @@ class TorCircuitCreationService(service.Service):
         self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
         self.web_endpoint.listen(server.Site(PerfdWebHome()))
 
-        self._bootstrap().addCallback(self._complete).addErrback(self._error)
+        for x in xrange(self.slave_tor_count):
+            config = txtorcon.TorConfig()
+            config.SocksPort = self.socks_port + x
+            config.ControlPort = 9052 + x
+            updates = functools.partial(self._updates, 'TOR-%d' % x)
+            d = txtorcon.launch_tor(config, reactor, progress_updates=updates)
+            d.addCallback(self._addSlave, config).addErrback(self._error)
 
     def _error(self, fail):
         sys.stderr.write(fail.getBriefTraceback())
@@ -202,13 +195,11 @@ class TorCircuitCreationService(service.Service):
     def _bootstrap(self):
         return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=True)
 
-    def _updates(self, prog, tag, summary):
-        log.msg('%d%%: %s' % (prog, summary))
+    def _updates(self, tor, prog, tag, summary):
+        log.msg('%s: %d%%: %s' % (tor, prog, summary))
 
-    def _complete(self, state):
-        self.tor_state = state
-
-        log.msg('Connected to Tor version %s' % state.protocol.version)
+    def _complete(self, protocol):
+        log.msg('Connected to Tor version %s' % protocol.version)
         log.msg("Launching periodic requests every %f seconds" % self.frequency)
         if False:
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
@@ -228,10 +219,15 @@ class TorPerfdPlugin(object):
     options = Options
 
     def makeService(self, options):
-        return TorCircuitCreationService(options)
+        return TorCircuitCreationService(reactor, options)
 
 serviceMaker = TorPerfdPlugin()
 
 if __name__ == '__main__':
     print 'Please use "twistd -n torperfd" to launch perfd.py for debugging, or use the "perfd" shell script'
+
+class TestLaunch(unittest.TestCase):
+
+    def test_launch(self):
+        pass
 
