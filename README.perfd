@@ -13,31 +13,55 @@ Perfd is a proof-of-concept implementation of Torperf using Twisted
 Howto
 -----
 
-On Debian, get Twisted core, Twisted Web, and Tor:
-  apt-get install python-twisted-core python-twisted-web tor
+On Debian, get Twisted core, Twisted Web:
+  sudo apt-get install python-twisted-core python-twisted-web
+
+Clone tor, compile, and install it:
+  git clone https://git.torproject.org/tor.git
+  cd tor/
+  sudo apt-get install automake build-essential libssl-dev libevent-dev
+  ./autogen.sh
+  ./configure --disable-asciidoc
+  make
+  sudo make install
+  cd ../
+
+Configure a Tor client and start it:
+  mkdir torclient
+  cd torclient/
+  cat <<EOF >> torclient/torrc
+DataDirectory .
+SocksPort 9050
+ControlPort 9051
+MaxCircuitDirtiness 10 seconds
+UseEntryGuards 0
+RunAsDaemon 1
+Log notice file log
+CookieAuthentication 1
+EOF
+  tor -f torrc
 
 Clone twisted-socks and create a symbolic Link to its main source file:
   git clone https://github.com/kloesing/twisted-socks
   ln -s twisted-socks/src/socksclient.py .
 
-For local testing, run local Twisted SOCKS proxy:
-  twistd -n socks
+Clone txtorcon and follow the instructions in its INSTALL file (copied
+here for convenience):
+  git clone https://github.com/meejah/txtorcon
+  cd txtorcon/
+  sudo apt-get install python-setuptools python-twisted python-ipaddr \
+      python-geoip python-psutil graphviz
+  sudo python setup.py install
+  cd ../
 
-For Tor testing, edit PUBLIC_IP and SOCKS_PORT at the bottom of perfd.py.
+For debugging, run
+  twistd -n torperfd -h $PUBLIC_IP
+with $PUBLIC_IP being the publicly reachable IP address of your host.
 
-Start Perfd service which runs in the background:
-  ./perfd start
+Look out for a log message like this indicating a successful run:
 
-To restart or stop the service, run
-  ./perfd restart
-or
-  ./perfd stop
-
-Logs are written to perfd.log.  Look out for this log message indicating a
-successful (local-only) Perfd run:
-
-2013-01-22 21:26:13+0100 [SOCKSv4ClientProtocol,client] \
-START=1358886373.87 CONNECT=1358886373.88 DATACOMPLETE=1358886373.88
+2013-01-29 12:02:06+0000 [_WrappingProtocol,client] START=1359460923.73 \
+CONNECT=1359460924.73 DATACOMPLETE=1359460926.36
 
 
 Next steps
@@ -45,12 +69,12 @@ Next steps
 
 A  Reach feature parity with current Torperf
 
-1 Use txtorcon, available at https://github.com/meejah/txtorcon, to set up
+- Use txtorcon, available at https://github.com/meejah/txtorcon, to set up
   local tor clients, configure them, and register for events.  Send
   feedback and enhancement requests to meejah using GitHub's Issues
-  interface.
+  interface.  meejah says examples/monitor.py is a good example.
 
-2 Decide on a Twisted SOCKS client implementation and extend it to capture
+- Decide on a Twisted SOCKS client implementation and extend it to capture
   more timestamps.  Options are:
   - adapting Linus' twisted-socks that we currently use,
   - adapting Arturo's https://github.com/hellais/txsocksx which he says
@@ -59,40 +83,54 @@ A  Reach feature parity with current Torperf
     Arturo's implementation, our trivsocks-client C implementation, and
     maybe tor-resolve.py in tor's contrib/.
 
-3 Use a database, maybe SQLite, to store request timestamps and controller
+- Add timestamps, exact byte sizes, etc. to HTTP requests.
+
+- Add configurable request timeouts, and make sure that timed-out requests
+  are logged correctly.
+
+- Use a database, maybe SQLite, to store request timestamps and controller
   events and to provide results via the same web server that is used for
   measurements.  Either offer results in JSON format, or (preferably) in
   Torperf's key=value format.
 
+- Make web server listen on port 80, not 8080, and drop privileges
+  afterwards.
+
 
 B  Make measurement results more realistic
 
-4 Integrate Will Scott's pagespeed prototype that uses Selenium/Firefox
+- Integrate Will Scott's pagespeed prototype that uses Selenium/Firefox
   (not PhantomJS) available at https://github.com/willscott/pagespeed.
   meejah suspects that all we need to make this work is Twisted's
   event-based subprocess launching which txtorcon uses to launch slave
-  Tors.
+  Tors.  Will suggests to add a few time()'s to make sure that the
+  timestamps Firefox reports are plausible.  Add Will as co-author when
+  integrating pagespeed code.
 
-5 Ponder adding a measuring proxy between Firefox and Tor to capture more
+- Ponder adding a measuring proxy between Firefox and Tor to capture more
   timestamps.  One option might be Rob van der Hoeven's Monitor In The
   Middle, available at http://freedomboxblog.nl/mitm-for-tor/, which is
   based on Twisted.  Other options might be BrowserMob, dynaTrace,
   HttpWatch, or Watir.  Special focus should be on easy of deployment.
 
-6 Run a parallel Torperf with a Firefox with the optimistic data patch.
+- Run a parallel Torperf with a Firefox with the optimistic data patch.
   See #3875 for the optimistic data patch.
 
 
 C  Add more performance tests
 
-7 Add a test that runs a series of requests to track stream/circ
+- Adopt modified guard node selection code from entrycons.py.  Consider
+  re-using parts of meejah's circuit-building and stream-attaching code
+  taken out in 4d8ca65.
+
+- Add a test that runs a series of requests to track stream/circ
   allocations for #5830.  meejah says there are some decent examples in
   txtorcon's exit_scanner branch and in examples/circuit_failure_rates.py.
 
-8 Write a test that measures upload speed using HTTP POST requests for
+- Write a test that measures upload speed using HTTP POST requests for
   #7010.
 
-9 Add a performance test to a locally running hidden service.  meejah says
+- Add a performance test to a locally running hidden service.  meejah says
   that a super-simple version of this is already included in tortxcon in
   examples/launch_tor_with_hidden_service.py and that adding timing code
   would be easy.

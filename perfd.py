@@ -11,7 +11,7 @@ Proof-of-concept implementation of Torperf using Twisted:
 import os
 import sys
 import time
-from tempfile import mkdtemp
+#from tempfile import mkdtemp
 
 #from txsocksx.client import SOCKS5ClientEndpoint
 from socksclient import SOCKSWrapper
@@ -35,7 +35,6 @@ class Options(usage.Options):
     """
 
     optParameters = [
-        ['circuits', 'C', 1, 'Number of circuits to use for performance-testing.', int],
         ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
         ['delay', 'n', 60, 'Seconds between performance tests.', int],
         ['port', 'p', 81, 'Port to contact on the server.', int],
@@ -104,11 +103,12 @@ class PerfdWebHome(resource.Resource):
 
 class PerfdWebRequest(object):
     def __init__(self, host, http_port, socks_port, file_size):
-        self.start = time.time()
+        self.times = {}
+        self.timer = interfaces.IReactorTime(reactor)
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
-        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)
+        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
+                               self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        print 'Preparing request to "%s" via SOCKS on %d for %d bytes' % (url, socks_port, file_size)
         factory = client.HTTPClientFactory(url)
         factory.deferred.addCallback(self._printStatistics).addErrback(self._error)
         deferred = wrapper.connect(factory)
@@ -119,10 +119,8 @@ class PerfdWebRequest(object):
         return fail
 
     def _printStatistics(self, response):
-        self.datacomplete = time.time()
-        #print 'START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete, )
-        print "elapsed:", (self.datacomplete - self.start)
-        log.msg('START=%.2f CONNECT=%.2f DATACOMPLETE=%.2f' % (self.start, self.connect, self.datacomplete))
+        self.times['DATACOMPLETE'] = self.timer.seconds()
+        log.msg(self.times)
 
         """ Eventually support most or all of these:
             START=1338357901.42 # Connection process started
@@ -149,15 +147,11 @@ class PerfdWebRequest(object):
         """
 
     def _connected(self, proxy):
-        self.connect = time.time()
-        log.msg("connection at " + str(self.connect))
+        pass
 
 
-class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, txtorcon.CircuitListenerMixin):
-    implements(service.IService,
-               txtorcon.IStreamAttacher,
-               txtorcon.IStreamListener,
-               txtorcon.ICircuitListener)
+class TorCircuitCreationService(service.Service):
+    implements(service.IService)
 
     def __init__(self, options):
         self.port = options['port']
@@ -168,9 +162,7 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
         if options['debug-txtorcon']:
             txtorcon.log.debug_logging()
 
-        self.tor_endpoint = endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9052)
         self.tor_state = None
-        self.resource = PerfdWebHome()
         self.outstanding_circuits = []
         '''Circuits we've asked to be built, but aren't yet complete (items are circuit IDs)'''
 
@@ -210,17 +202,11 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
     def _bootstrap(self):
         return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=True)
 
-
     def _updates(self, prog, tag, summary):
         log.msg('%d%%: %s' % (prog, summary))
 
-
     def _complete(self, state):
         self.tor_state = state
-        self.tor_state.add_circuit_listener(self)
-        self.tor_state.add_stream_listener(self)
-        self.tor_state.set_attacher(self, reactor)
-        self.buildOneCircuit()
 
         log.msg('Connected to Tor version %s' % state.protocol.version)
         log.msg("Launching periodic requests every %f seconds" % self.frequency)
@@ -233,113 +219,6 @@ class TorCircuitCreationService(service.Service, txtorcon.StreamListenerMixin, t
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.public_ip,
                                                       self.port, self.socks_port, self.file_size)
             self.service_requestor.start(self.frequency)
-
-    ## txtorcon.IStreamAttacher
-    def attach_stream(self, stream, circuits):
-        """
-        Note: We can return None (let Tor decide), a Deferred that
-        callbacks with a circuit, or a circuit directly. Or
-        TorState.DO_NOT_ATTACH if we wish to ignore it (i.e. leave it
-        unattached; Tor will nuke this after about 2 minutes).
-        """
-
-        print "Being asked to attach stream:", stream
-
-        if len(self.completed_circuits):
-            if stream.target_addr == self.public_ip or stream.target_host == self.public_ip:
-                ## FIXME choose differenlty, presumably (takes first one)
-                circ = self.completed_circuits.values()[0]
-                print "ATTACHING to", circ
-                return circ
-
-        # tell Tor to choose for us
-        return None
-
-    ## txtorcon.IStreamListener
-    def stream_new(self, stream):
-        "a new stream has been created"
-
-    def stream_succeeded(self, stream):
-        "stream has succeeded"
-
-    def stream_attach(self, stream, circuit):
-        "the stream has been attached to a circuit"
-        sys.stderr.write('attach: %s -> %s\n' % (str(stream), str(circuit)))
-
-    def stream_detach(self, stream, reason):
-        "the stream has been detached from its circuit"
-
-    def stream_closed(self, stream):
-        "stream has been closed (won't be in controller's list anymore)"
-
-    def stream_failed(self, stream, reason, remote_reason):
-        "stream failed for some reason (won't be in controller's list anymore)"
-
-    ## txtorcon.ICircuitListener
-    def circuit_new(self, circuit):
-        """A new circuit has been created.  You'll always get one of
-        these for every Circuit even if it doesn't go through the "launched"
-        state."""
-
-    def circuit_launched(self, circuit):
-        "A new circuit has been started."
-
-    def circuit_extend(self, circuit, router):
-        "A circuit has been extended to include a new router hop."
-        if circuit in self.outstanding_circuits:
-            sys.stderr.write('ONE OF OURS extended: %s %s\n' % (str(circuit), str(router)))
-
-        if DEBUG:
-            sys.stderr.write('Extend: %s %s\n' % (str(circuit), str(router)))
-
-    def circuit_built(self, circuit):
-        """
-        A circuit has been extended to all hops (usually 3 for user
-        circuits).
-        """
-        if circuit in self.outstanding_circuits:
-            sys.stderr.write('OURS is built: %s\n' % str(circuit))
-            self.completed_circuits[circuit.id] = circuit
-            self.outstanding_circuits.remove(circuit)
-            self._newlyBuiltCircuit(circuit)
-            circuit.built_time = time.time()
-            diff = circuit.built_time - circuit.start_time
-            print "Circuit took %f seconds to build." % diff
-
-        if DEBUG:
-            sys.stderr.write('built: %s\n' % (str(circuit)))
-
-    def circuit_closed(self, circuit):
-        """
-        A circuit has been closed cleanly (won't be in controller's list any more).
-        """
-        self._check_closed_circuit(circuit)
-
-    def circuit_failed(self, circuit, reason):
-        """A circuit has been closed because something went wrong."""
-
-        if DEBUG:
-            sys.stderr.write('failed: %s %s\n' % (str(circuit), str(reason)))
-
-        if circuit in self.outstanding_circuits:
-            circuit.failed_time = time.time()
-            diff = circuit.failed_time - circuit.start_time
-
-            sys.stderr.write("One of our outstanding circuits failed!\n")
-            print "Circuit took %f seconds to fail." % diff
-            self.outstanding_circuits.remove(circuit)
-            self.buildOneCircuit()
-
-        self._check_closed_circuit(circuit)
-
-    def _check_closed_circuit(self, circuit):
-        print "closed?", circuit, self.completed_circuits
-        if circuit.id in self.completed_circuits:
-            print "OUR CIRCUIT got CLOSED!"
-            del self.completed_circuits[circuit.id]
-            print "building a new one"
-            self.buildOneCircuit()
-
 
 class TorPerfdPlugin(object):
     implements(IPlugin, service.IServiceMaker)
@@ -355,3 +234,4 @@ serviceMaker = TorPerfdPlugin()
 
 if __name__ == '__main__':
     print 'Please use "twistd -n torperfd" to launch perfd.py for debugging, or use the "perfd" shell script'
+
