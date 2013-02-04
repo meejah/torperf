@@ -101,6 +101,64 @@ class PerfdWebHome(resource.Resource):
             return resource.NoResource()
 
 
+class MeasuringHTTPPageGetter(client.HTTPPageGetter):
+
+    def __init__(self):
+        self.times = {}
+        self.timer = interfaces.IReactorTime(reactor)
+        self.sentBytes = 0
+        self.receivedBytes = 0
+        self.expectedBytes = 51200
+        self.decileLogged = 0
+
+    def connectionMade(self):
+        client.HTTPPageGetter.connectionMade(self)
+        self.times['DATAREQUEST'] = self.timer.seconds()
+
+    def sendCommand(self, command, path):
+        self.sentBytes += len('%s %s HTTP/1.0\r\n' % (command, path))
+        client.HTTPPageGetter.sendCommand(self, command, path)
+
+    def sendHeader(self, name, value):
+        self.sentBytes += len('%s: %s\r\n' % (name, value))
+        client.HTTPPageGetter.sendHeader(self, name, value)
+
+    def endHeaders(self):
+        self.sentBytes += len('\r\n')
+        client.HTTPPageGetter.endHeaders(self)
+
+    def dataReceived(self, data):
+        if self.receivedBytes == 0 and len(data) > 0:
+            self.times['DATARESPONSE'] = self.timer.seconds()
+        self.receivedBytes += len(data)
+        while (self.receivedBytes < self.expectedBytes and
+              (self.receivedBytes * 10) / self.expectedBytes >
+               self.decileLogged):
+            self.decileLogged += 1
+            self.times['DATAPERC%d' % (self.decileLogged * 10, )] = \
+                       self.timer.seconds()
+        client.HTTPPageGetter.dataReceived(self, data)
+
+    def handleResponse(self, response):
+        self.times['WRITEBYTES'] = self.sentBytes
+        self.times['READBYTES'] = self.receivedBytes
+        self.times['DATACOMPLETE'] = self.timer.seconds()
+        self.times['DIDTIMEOUT'] = 0
+        log.msg(self.times) # TODO How can we link these timestamps and
+                            # other data to the PerfdWebRequest instance
+                            # and store them in the database together with
+                            # other request data, e.g., SOCKS timestamps?
+        client.HTTPPageGetter.handleResponse(self, response)
+
+    def timeout(self):
+        self.times['DIDTIMEOUT'] = 1
+        log.msg(self.times) # TODO How can we link these timestamps and
+                            # other data to the PerfdWebRequest instance
+                            # and store them in the database together with
+                            # other request data, e.g., SOCKS timestamps?
+        client.HTTPPageGetter.timeout(self)
+
+
 class PerfdWebRequest(object):
     def __init__(self, host, http_port, socks_port, file_size):
         self.times = {}
@@ -109,45 +167,17 @@ class PerfdWebRequest(object):
         wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
                                self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        factory = client.HTTPClientFactory(url)
-        factory.deferred.addCallback(self._printStatistics).addErrback(self._error)
-        deferred = wrapper.connect(factory)
-        deferred.addCallback(self._connected)
+        timeout = 2  # TODO change to something reasonable after testing
+        factory = client.HTTPClientFactory(url, timeout=timeout)
+        factory.protocol = MeasuringHTTPPageGetter
+        factory.deferred.addCallbacks(self._request_finished)
+        deferred = wrapper.connect(factory)  # TODO use timeout, and use
+                                             # remaining timeout for HTTP
+                                             # request
+        deferred.addCallbacks(self._request_finished)
 
-    def _error(self, *args):
-        sys.stderr.write(fail.getBriefTraceback())
-        return fail
-
-    def _printStatistics(self, response):
-        self.times['DATACOMPLETE'] = self.timer.seconds()
+    def _request_finished(self, ignored):
         log.msg(self.times)
-
-        """ Eventually support most or all of these:
-            START=1338357901.42 # Connection process started
-            SOCKET=1338357901.42 # After socket is created
-            CONNECT=1338357901.42 # After socket is connected
-            NEGOTIATE=1338357901.42 # After authentication methods are negotiated (SOCKS 5 only)
-            REQUEST=1338357901.42 # After SOCKS request is sent
-            RESPONSE=1338357901.83 # After SOCKS response is received
-            DATAREQUEST=1338357901.83 # After HTTP request is written
-            DATARESPONSE=1338357902.25 # After first response is received
-            DATACOMPLETE=1338357902.91 # After payload is complete
-            WRITEBYTES=75 # Written bytes
-            READBYTES=51442 # Read bytes
-            DIDTIMEOUT=0 # Timeout (optional field)
-            DATAPERC10=1338357902.48 # After 10% of expected bytes are read (optional field)
-            DATAPERC20=1338357902.48 # After 20% of expected bytes are read (optional field)
-            DATAPERC30=1338357902.61 # After 30% of expected bytes are read (optional field)
-            DATAPERC40=1338357902.64 # After 40% of expected bytes are read (optional field)
-            DATAPERC50=1338357902.65 # After 50% of expected bytes are read (optional field)
-            DATAPERC60=1338357902.74 # After 60% of expected bytes are read (optional field)
-            DATAPERC70=1338357902.74 # After 70% of expected bytes are read (optional field)
-            DATAPERC80=1338357902.75 # After 80% of expected bytes are read (optional field)
-            DATAPERC90=1338357902.79 # After 90% of expected bytes are read (optional field)
-        """
-
-    def _connected(self, proxy):
-        pass
 
 
 class TorCircuitCreationService(service.Service):
