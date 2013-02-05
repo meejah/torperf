@@ -192,9 +192,6 @@ class TorCircuitCreationService(service.Service):
         sys.stderr.write(fail.getBriefTraceback())
         return fail
 
-    def _bootstrap(self):
-        return txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, 'localhost', 9051), build_state=True)
-
     def _updates(self, tor, prog, tag, summary):
         log.msg('%s: %d%%: %s' % (tor, prog, summary))
 
