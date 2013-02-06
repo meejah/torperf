@@ -47,30 +47,36 @@ class Options(usage.Options):
         ['debug-txtorcon', 'D', False, "Turn on txtorcon's debug log."]
         ]
 
-
-class UrandomResource(resource.Resource):
-    """ Pseudo-random data resource to be served via our web server.
-        Maybe this code is overly complex, and we can instead write
-        pseudo-random files to disk once and serve them with some
-        standard Twisted foo. """
+class RandomDataProducer(object):
     implements(interfaces.IPullProducer)
 
+    def __init__(self, size, stats, ireactortime):
+        self.size = size
+        self.stats = stats
+        self.timer = interfaces.IReactorTime(ireactortime)
+
     def beginProducing(self, consumer):
+        self.remaining = self.size
         self.consumer = consumer
-        self.deferred = deferred = defer.Deferred()
+        self.deferred = defer.Deferred()
         self.consumer.registerProducer(self, False)
-        return deferred
+        return self.deferred
 
     def resumeProducing(self):
-        if self.size <= 0:
+        if self.remaining <= 0:
             self.consumer.unregisterProducer()
             if self.deferred:
                 self.deferred.callback('o')
                 self.deferred = None
             return
-        chunk_size = min(self.size, 2 ** 16)
-        self.size -= chunk_size
+        chunk_size = min(self.remaining, 2 ** 16)
+        percentBefore = float(self.remaining) / float(self.size)
+        self.remaining -= chunk_size
+        percentAfter = float(self.remaining) / float(self.size)
         self.consumer.write(os.urandom(chunk_size))
+        if percentBefore > 0.50 and percentAfter < 0.50:
+            self.stats['SERVER_PERC50'] = self.timer.seconds()
+            print "sent 50% of content from server", self.timer.seconds()
 
     def stopProducing(self):
         if self.deferred:
@@ -79,9 +85,22 @@ class UrandomResource(resource.Resource):
                 Exception("Consumer asked us to stop producing."))
             self.deferred = None
 
+
+class UrandomResource(resource.Resource):
+    """ Pseudo-random data resource to be served via our web server.
+        Maybe this code is overly complex, and we can instead write
+        pseudo-random files to disk once and serve them with some
+        standard Twisted foo. """
+
+    def __init__(self, size):
+        self.size = size;
+        print "created resource of size", self.size
+
     def render_GET(self, request):
         request.setHeader('Content-Type', 'application/octet-stream')
-        d = self.beginProducing(request)
+        ## fixme, pass a real stats object (i.e. same hashtable as the others)
+        dataProducer = RandomDataProducer(self.size, {}, reactor)
+        d = dataProducer.beginProducing(request)
         def err(ignored):
             Exception("Error")
         def cbFinished(ignored):
@@ -89,17 +108,34 @@ class UrandomResource(resource.Resource):
         d.addErrback(err).addCallback(cbFinished)
         return server.NOT_DONE_YET
 
+
+class UrandomResourceDispatcher(resource.Resource):
+    children = {}
+
     def getChild(self, name, request):
-        if len(name) > 7 or not name.isdigit():
+        ## it's faster (and "more pythonic") to catch the exception
+        ## rather than check the hashtable first
+
+        try:
+            size = int(name)
+            if size > 999999:
+                return resource.NoResource()
+
+            try:
+                return self.children[size]
+
+            except KeyError:
+                self.children[size] = UrandomResource(size)
+                return self.children[size]
+
+        except ValueError:
             return resource.NoResource()
-        else:
-            self.size = int(name)
-            return self
+
 
 class PerfdWebHome(resource.Resource):
     def getChild(self, name, request):
         if name == 'urandom':
-            return UrandomResource()
+            return UrandomResourceDispatcher()
         else:
             return resource.NoResource()
 
