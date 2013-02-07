@@ -132,14 +132,6 @@ class UrandomResourceDispatcher(resource.Resource):
             return resource.NoResource()
 
 
-class PerfdWebHome(resource.Resource):
-    def getChild(self, name, request):
-        if name == 'urandom':
-            return UrandomResourceDispatcher()
-        else:
-            return resource.NoResource()
-
-
 class MeasuringHTTPPageGetter(client.HTTPPageGetter):
 
     def __init__(self):
@@ -244,7 +236,9 @@ class TorCircuitCreationService(service.Service):
         service.Service.startService(self)
 
         self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
-        self.web_endpoint.listen(server.Site(PerfdWebHome()))
+        root = resource.Resource()
+        root.putChild('urandom', UrandomResourceDispatcher())
+        self.web_endpoint.listen(server.Site(root))
 
         for x in xrange(self.slave_tor_count):
             config = txtorcon.TorConfig()
