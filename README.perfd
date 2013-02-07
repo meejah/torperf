@@ -7,7 +7,7 @@ Perfd is a proof-of-concept implementation of Torperf using Twisted
    tests.
 
  - Periodically requests 50 KiB of data from its own HTTP server via
-   Tor (or a local SOCKS proxy in general) and logs timestamps.
+   Tor and logs timestamps.
 
 
 Howto
@@ -26,21 +26,6 @@ Clone tor, compile, and install it:
   sudo make install
   cd ../
 
-Configure a Tor client and start it:
-  mkdir torclient
-  cd torclient/
-  cat <<EOF >> torclient/torrc
-DataDirectory .
-SocksPort 9050
-ControlPort 9051
-MaxCircuitDirtiness 10 seconds
-UseEntryGuards 0
-RunAsDaemon 1
-Log notice file log
-CookieAuthentication 1
-EOF
-  tor -f torrc
-
 Clone twisted-socks and create a symbolic Link to its main source file:
   git clone https://github.com/kloesing/twisted-socks
   ln -s twisted-socks/src/socksclient.py .
@@ -54,14 +39,16 @@ here for convenience):
   sudo python setup.py install
   cd ../
 
-For debugging, run
-  twistd -n torperfd -h $PUBLIC_IP
-with $PUBLIC_IP being the publicly reachable IP address of your host.
+Edit HOSTIP in perfd to the publicly reachable IP address of your host.
 
-Look out for a log message like this indicating a successful run:
+Run perfd as root, dropping privileges after opening port 80 for the web
+server:
 
-2013-01-29 12:02:06+0000 [_WrappingProtocol,client] START=1359460923.73 \
-CONNECT=1359460924.73 DATACOMPLETE=1359460926.36
+  sudo PYTHONPATH=$PYTHONPATH ./perfd start
+
+Look out for a log messages:
+
+  tail -f perfd.log
 
 
 Next steps

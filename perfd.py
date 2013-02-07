@@ -40,7 +40,7 @@ class Options(usage.Options):
 #        ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
         ['concurrent', 'c', 1, 'Number of slave Tor processes to launch.', int],
         ['delay', 'n', 60, 'Seconds between performance tests.', int],
-        ['port', 'p', 81, 'Port to contact on the server.', int],
+        ['port', 'p', 80, 'Port to contact on the server.', int],
         ['socks-port', 's', 9050, 'Port of the SOCKS proxy to use.', int],
         ['file-size', 'f', 51200, 'Size of the file the server will serve.', int],
         ['public-host', 'h', '127.0.0.1', 'Public IP address or hostname the server will be reachable at.'],
@@ -195,10 +195,10 @@ class PerfdWebRequest(object):
         self.times = {}
         self.timer = interfaces.IReactorTime(reactor)
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
-        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint)#,
-#                               self.times)
+        wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
+                               self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        timeout = 2  # TODO change to something reasonable after testing
+        timeout = 5  # TODO change to something reasonable after testing
         factory = client.HTTPClientFactory(url, timeout=timeout)
         factory.protocol = MeasuringHTTPPageGetter
         factory.deferred.addCallbacks(self._request_finished)
@@ -233,19 +233,23 @@ class TorCircuitCreationService(service.Service):
         self._complete(slave.protocol)
 
     def privilegedStartService(self):
-        service.Service.startService(self)
+        service.Service.privilegedStartService(self)
 
         self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
         root = resource.Resource()
         root.putChild('urandom', UrandomResourceDispatcher())
         self.web_endpoint.listen(server.Site(root))
 
+    def startService(self):
+        service.Service.startService(self)
         for x in xrange(self.slave_tor_count):
             config = txtorcon.TorConfig()
             config.SocksPort = self.socks_port + x
             config.ControlPort = 9052 + x
             updates = functools.partial(self._updates, 'TOR-%d' % x)
-            d = txtorcon.launch_tor(config, reactor, progress_updates=updates)
+            d = txtorcon.launch_tor(config, reactor,
+                                    tor_binary='/usr/local/bin/tor',
+                                    progress_updates=updates)
             d.addCallback(self._addSlave, config).addErrback(self._error)
 
     def _error(self, fail):

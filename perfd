@@ -2,8 +2,9 @@
 PIDFILE=perfd.pid
 TACFILE=torperfd
 LOGFILE=perfd.log
-USER=debian-tor
-GROUP=debian-tor
+USER=admin
+GROUP=admin
+HOSTIP=23.22.45.179
 
 case "$1" in
   start)
@@ -12,16 +13,15 @@ case "$1" in
       exit 1
     fi
     echo "Starting Perfd."
-    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE -h $HOSTIP
     ;;
   restart)
     if [ -f $PIDFILE ]; then
       echo "Stopping Perfd."
       kill `head -1 $PIDFILE`
-      rm $PIDFILE
     fi
     echo "Restarting Perfd."
-    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE -h $HOSTIP
     ;;
   stop)
     if [ ! -f $PIDFILE ]; then
@@ -30,7 +30,6 @@ case "$1" in
     fi
     echo "Stopping Perfd."
     kill `head -1 $PIDFILE`
-    rm $PIDFILE
     ;;
   *)
     echo "Usage: "$0" {start|restart|stop}"
