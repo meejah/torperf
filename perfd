@@ -4,7 +4,6 @@ TACFILE=torperfd
 LOGFILE=perfd.log
 USER=admin
 GROUP=admin
-HOSTIP=23.22.45.179
 
 case "$1" in
   start)
@@ -13,7 +12,7 @@ case "$1" in
       exit 1
     fi
     echo "Starting Perfd."
-    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE -h $HOSTIP
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
     ;;
   restart)
     if [ -f $PIDFILE ]; then
@@ -21,7 +20,7 @@ case "$1" in
       kill `head -1 $PIDFILE`
     fi
     echo "Restarting Perfd."
-    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE -h $HOSTIP
+    twistd --uid $USER --gid $GROUP -l $LOGFILE --prefix "perfd" --pidfile $PIDFILE $TACFILE
     ;;
   stop)
     if [ ! -f $PIDFILE ]; then

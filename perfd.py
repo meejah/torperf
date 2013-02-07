@@ -4,17 +4,57 @@ Proof-of-concept implementation of Torperf using Twisted:
 - Sets up an HTTP server that serves random data for performance
   tests.
 
-- Periodically requests 50 KiB of data from its own HTTP server via
-  Tor (or a local SOCKS proxy in general) and logs timestamps.
+- Periodically requests 50 KiB, 1 MiB, and 5 MiB of data from its own
+  HTTP server via Tor and logs timestamps.
 """
+
+server_config = {
+    'public-host': '23.22.45.179',  # Public IP address or hostname the server will be reachable at.
+    'http-port': 80,  # Port to contact on the server.
+    'debug-txtorcon': False,  # Turn on txtorcon's debug log.
+}
+
+client_configs = [
+    {
+        'source': 'ec2',  # Source name.
+        'launch-tor': True,  # Launch a Tor process.
+        'tor-binary': '/usr/local/bin/tor',  # Tor binary to launch.
+        'start-delay': 0,  # Seconds before first request, after web server and Tor process are available.
+        'request-delay': 300,  # Seconds between requests.
+        'socks-port': 9020,  # SOCKS port of the Tor process.
+        'control-port': 10020,  # Control port of the Tor process.
+        'file-size': 51200,  # Request size in bytes.
+        'request-timeout': 295,  # Request timeout in seconds.
+    },
+    {
+        'source': 'ec2',  # Source name.
+        'launch-tor': True,  # Launch a Tor process.
+        'tor-binary': '/usr/local/bin/tor',  # Tor binary to launch.
+        'start-delay': 120,  # Seconds before first request, after web server and Tor process are available.
+        'request-delay': 1800,  # Seconds between requests.
+        'socks-port': 9021,  # SOCKS port of the Tor process.
+        'control-port': 10021,  # Control port of the Tor process.
+        'file-size': 1048576,  # Request size in bytes.
+        'request-timeout': 1795,  # Request timeout in seconds.
+    },
+#    {
+#        'source': 'ec2',  # Source name.
+#        'launch-tor': True,  # Launch a Tor process.
+#        'tor-binary': '/usr/local/bin/tor',  # Tor binary to launch.
+#        'start-delay': 480,  # Seconds before first request, after web server and Tor process are available.
+#        'request-delay': 3600,  # Seconds between requests.
+#        'socks-port': 9022,  # SOCKS port of the Tor process.
+#        'control-port': 10022,  # Control port of the Tor process.
+#        'file-size': 5242880,  # Request size in bytes.
+#        'request-timeout': 3595,  # Request timeout in seconds.
+#    },
+]
 
 import os
 import sys
 import time
-#from tempfile import mkdtemp
 import functools
 
-#from txsocksx.client import SOCKS5ClientEndpoint
 from socksclient import SOCKSWrapper
 
 import txtorcon
@@ -28,24 +68,14 @@ from twisted.trial import unittest
 
 from zope.interface import implements
 
-# more verbose output
-DEBUG = False
 
 class Options(usage.Options):
     """
     command-line options we understand
     """
 
-    optParameters = [
-#        ['connect', 'c', None, 'Tor control socket to connect to in host:port format, like "localhost:9051" (the default).'],
-        ['concurrent', 'c', 1, 'Number of slave Tor processes to launch.', int],
-        ['delay', 'n', 60, 'Seconds between performance tests.', int],
-        ['port', 'p', 80, 'Port to contact on the server.', int],
-        ['socks-port', 's', 9050, 'Port of the SOCKS proxy to use.', int],
-        ['file-size', 'f', 51200, 'Size of the file the server will serve.', int],
-        ['public-host', 'h', '127.0.0.1', 'Public IP address or hostname the server will be reachable at.'],
-        ['debug-txtorcon', 'D', False, "Turn on txtorcon's debug log."]
-        ]
+    optParameters = []
+
 
 class RandomDataProducer(object):
     implements(interfaces.IPullProducer)
@@ -113,21 +143,15 @@ class UrandomResourceDispatcher(resource.Resource):
     children = {}
 
     def getChild(self, name, request):
-        ## it's faster (and "more pythonic") to catch the exception
-        ## rather than check the hashtable first
-
         try:
             size = int(name)
-            if size > 999999:
+            if size > 9999999:
                 return resource.NoResource()
-
             try:
                 return self.children[size]
-
             except KeyError:
                 self.children[size] = UrandomResource(size)
                 return self.children[size]
-
         except ValueError:
             return resource.NoResource()
 
@@ -139,6 +163,7 @@ class MeasuringHTTPPageGetter(client.HTTPPageGetter):
         self.timer = interfaces.IReactorTime(reactor)
         self.sentBytes = 0
         self.receivedBytes = 0
+        # TODO Learn expected bytes from PerfdWebRequest instance
         self.expectedBytes = 51200
         self.decileLogged = 0
 
@@ -191,15 +216,15 @@ class MeasuringHTTPPageGetter(client.HTTPPageGetter):
 
 
 class PerfdWebRequest(object):
-    def __init__(self, host, http_port, socks_port, file_size):
+    def __init__(self, host, http_port, socks_port, file_size,
+                 request_timeout):
         self.times = {}
         self.timer = interfaces.IReactorTime(reactor)
         endpoint = endpoints.TCP4ClientEndpoint(reactor, host, http_port)
         wrapper = SOCKSWrapper(reactor, 'localhost', socks_port, endpoint,
                                self.times)
         url = 'http://%s:%d/urandom/%d' % (host, http_port, file_size, )
-        timeout = 5  # TODO change to something reasonable after testing
-        factory = client.HTTPClientFactory(url, timeout=timeout)
+        factory = client.HTTPClientFactory(url, timeout=request_timeout)
         factory.protocol = MeasuringHTTPPageGetter
         factory.deferred.addCallbacks(self._request_finished)
         deferred = wrapper.connect(factory)  # TODO use timeout, and use
@@ -211,46 +236,38 @@ class PerfdWebRequest(object):
         log.msg(self.times)
 
 
-class TorCircuitCreationService(service.Service):
-    implements(service.IService)
+class PerfdWebClient(object):
 
-    def __init__(self, reactor, options):
-        self.port = options['port']
-        self.socks_port = options['socks-port']
-        self.frequency = options['delay']
-        self.file_size = options['file-size']
-        self.public_ip = options['public-host']
-        if options['debug-txtorcon']:
-            txtorcon.log.debug_logging()
-        self.slave_tor_count = options['concurrent']
+    def __init__(self, reactor, server_config, client_config):
+        self._reactor = reactor
+        self._public_host = server_config['public-host']
+        self._http_port = server_config['http-port']
+        self._source = client_config['source']
+        self._launch_tor = client_config['launch-tor']
+        self._tor_binary = client_config['tor-binary']
+        self._start_delay = client_config['start-delay']
+        self._request_delay = client_config['request-delay']
+        self._socks_port = client_config['socks-port']
+        self._control_port = client_config['control-port']
+        self._file_size = client_config['file-size']
+        self._request_timeout = client_config['request-timeout']
 
-        self.slave_tors = []
-        """All the Tor instances we have launched."""
+    def launch_tor(self):
+        # TODO How would we not launch, but only connect to Tor?
+        config = txtorcon.TorConfig()
+        config.SocksPort = self._socks_port
+        config.ControlPort = self._control_port
+        updates = functools.partial(self._updates,
+                                    'TOR-%d' % self._socks_port)
+        d = txtorcon.launch_tor(config, self._reactor,
+                                tor_binary=self._tor_binary,
+                                progress_updates=updates)
+        d.addCallback(self._launched, config).addErrback(self._error)
 
-    def _addSlave(self, config, slave):
-        print "Slave successfully launched!", config, slave
-        self.slave_tors.append(slave.protocol)
+    def _launched(self, config, slave):
+        print "Successfully launched Tor process!", config, slave
+        self._launched_tor = slave.protocol
         self._complete(slave.protocol)
-
-    def privilegedStartService(self):
-        service.Service.privilegedStartService(self)
-
-        self.web_endpoint = endpoints.TCP4ServerEndpoint(reactor, self.port)
-        root = resource.Resource()
-        root.putChild('urandom', UrandomResourceDispatcher())
-        self.web_endpoint.listen(server.Site(root))
-
-    def startService(self):
-        service.Service.startService(self)
-        for x in xrange(self.slave_tor_count):
-            config = txtorcon.TorConfig()
-            config.SocksPort = self.socks_port + x
-            config.ControlPort = 9052 + x
-            updates = functools.partial(self._updates, 'TOR-%d' % x)
-            d = txtorcon.launch_tor(config, reactor,
-                                    tor_binary='/usr/local/bin/tor',
-                                    progress_updates=updates)
-            d.addCallback(self._addSlave, config).addErrback(self._error)
 
     def _error(self, fail):
         sys.stderr.write(fail.getBriefTraceback())
@@ -261,16 +278,47 @@ class TorCircuitCreationService(service.Service):
 
     def _complete(self, protocol):
         log.msg('Connected to Tor version %s' % protocol.version)
-        log.msg("Launching periodic requests every %f seconds" % self.frequency)
+        log.msg("Launching periodic requests every %f seconds" % self._request_delay)
         if False:
+            # TODO Placeholder for hidden service support
             self.service_requestor = task.LoopingCall(PerfdWebRequest, self.config.HiddenServices[0].hostname,
-                                                      self.port, self.socks_port, self.file_size)
-            self.service_requestor.start(self.frequency)
+                                                      self._http_port, self._socks_port, self._file_size, self._request_timeout)
+            self.service_requestor.start(self._request_delay)
 
         else:
-            self.service_requestor = task.LoopingCall(PerfdWebRequest, self.public_ip,
-                                                      self.port, self.socks_port, self.file_size)
-            self.service_requestor.start(self.frequency)
+            self.service_requestor = task.LoopingCall(PerfdWebRequest, self._public_host,
+                                                      self._http_port, self._socks_port, self._file_size, self._request_timeout)
+            # TODO Add start delay
+            self.service_requestor.start(self._request_delay)
+
+
+class TorPerfdService(service.Service):
+    implements(service.IService)
+
+    def __init__(self, reactor, server_config, client_configs):
+        self._reactor = reactor
+        self._server_config = server_config
+        self._client_configs = client_configs
+        self.started_clients = []
+
+    def privilegedStartService(self):
+        service.Service.privilegedStartService(self)
+
+        self.web_endpoint = endpoints.TCP4ServerEndpoint(self._reactor,
+                            self._server_config['http-port'])
+        root = resource.Resource()
+        root.putChild('urandom', UrandomResourceDispatcher())
+        self.web_endpoint.listen(server.Site(root))
+
+    def startService(self):
+        service.Service.startService(self)
+        if self._server_config['debug-txtorcon']:
+            txtorcon.log.debug_logging()
+        for client_config in self._client_configs:
+            client = PerfdWebClient(self._reactor, self._server_config, client_config)
+            client.launch_tor()
+            self.started_clients.append(client)
+
 
 class TorPerfdPlugin(object):
     implements(IPlugin, service.IServiceMaker)
@@ -280,7 +328,7 @@ class TorPerfdPlugin(object):
     options = Options
 
     def makeService(self, options):
-        return TorCircuitCreationService(reactor, options)
+        return TorPerfdService(reactor, server_config, client_configs)
 
 serviceMaker = TorPerfdPlugin()
 

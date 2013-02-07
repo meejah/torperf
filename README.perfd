@@ -6,8 +6,8 @@ Perfd is a proof-of-concept implementation of Torperf using Twisted
  - Sets up an HTTP server that serves random data for performance
    tests.
 
- - Periodically requests 50 KiB of data from its own HTTP server via
-   Tor and logs timestamps.
+ - Periodically requests 50 KiB, 1 MiB, and 5 MiB of data from its own
+   HTTP server via Tor and logs timestamps.
 
 
 Howto
@@ -39,7 +39,9 @@ here for convenience):
   sudo python setup.py install
   cd ../
 
-Edit HOSTIP in perfd to the publicly reachable IP address of your host.
+Edit the configuration in perfd.py.  In particular, change the
+'public-host' entry in server_config to the publicly reachable IP address
+of your host.
 
 Run perfd as root, dropping privileges after opening port 80 for the web
 server:
