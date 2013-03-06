@@ -252,8 +252,30 @@ class PerfdWebClient(object):
         self._file_size = client_config['file-size']
         self._request_timeout = client_config['request-timeout']
 
+    def _create_config(self, proto):
+        """Of course, we could use @inlineCallbacks so there are fewer tiny callbacks"""
+        config = txtorcon.TorConfig(proto)
+        config.post_bootstrap.addCallback(self._set_config).addErrback(self._error)
+
+    def _set_config(self, config):
+        config.SocksPort = [self._socks_port]
+        config.ControlPort = [self._control_port]
+        d = config.save()
+        d.addCallback(self._launched, config).addErrback(self._error)
+
     def launch_tor(self):
         # TODO How would we not launch, but only connect to Tor?
+        if True:
+            ## meejah: to connect to a running system Tor, presuming
+            ## default ports, simply do the following. If build_state
+            ## is True instead, then the object you get back is a
+            ## TorState. Below, we get back a TorControlProtocol
+            ## instance (same as launch_tor())
+            d = txtorcon.build_tor_connection(endpoints.TCP4ClientEndpoint(reactor, "localhost", 9051),
+                                              build_state=False)
+            d.addCallback(self._create_config).addErrback(self._error)
+            return
+
         config = txtorcon.TorConfig()
         config.SocksPort = self._socks_port
         config.ControlPort = self._control_port
